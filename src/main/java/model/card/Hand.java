@@ -22,7 +22,7 @@ public final class Hand {
         return this.cards[index];
     }
 
-    public void setCardAt(Card newCard, int index) {
+    public void setCardAt(int index, Card newCard) {
 
         if (index < 0 || index > 3) {
             throw new ArrayIndexOutOfBoundsException("Cannot set a card outside index range 0-3");
@@ -36,6 +36,19 @@ public final class Hand {
             throw new ArrayIndexOutOfBoundsException("Cannot remove a card outside index range 0-3");
         }
         this.cards[index] = Optional.empty();
+    }
+
+    public Hand newHandWithSwapAt(int index, Card newCard) {
+        Hand newHand = new Hand(Arrays.copyOf(this.cards, this.cards.length));
+        newHand.setCardAt(index, newCard);
+        return newHand;
+    }
+
+    public int value() {
+        return Arrays.stream(this.cards)
+                .filter(Optional::isPresent)
+                .mapToInt(c -> c.get().getValue())
+                .sum();
     }
 
     @Override
