@@ -1,17 +1,17 @@
 package model.card;
 
-import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 public final class Hand {
 
-    private final Optional<Card>[] cards;
+    private final List<Optional<Card>> cards;
 
-    public Hand(Optional<Card>[] startingCards) {
+    public Hand(List<Optional<Card>> startingCards) {
         this.cards = startingCards;
     }
 
-    public Optional<Card>[] getCards() {
+    public List<Optional<Card>> getCards() {
         return this.cards;
     }
     public Optional<Card> getCardAt(int index) {
@@ -19,7 +19,7 @@ public final class Hand {
         if (index < 0 || index > 3) {
             throw new ArrayIndexOutOfBoundsException("Cannot access a card outside index range 0-3");
         }
-        return this.cards[index];
+        return this.cards.get(index);
     }
 
     public void setCardAt(int index, Card newCard) {
@@ -27,7 +27,7 @@ public final class Hand {
         if (index < 0 || index > 3) {
             throw new ArrayIndexOutOfBoundsException("Cannot set a card outside index range 0-3");
         }
-        this.cards[index] = Optional.of(newCard);
+        this.cards.set(index, Optional.of(newCard));
     }
 
     public void removeCard(int index) {
@@ -35,17 +35,17 @@ public final class Hand {
         if (index < 0 || index > 3) {
             throw new ArrayIndexOutOfBoundsException("Cannot remove a card outside index range 0-3");
         }
-        this.cards[index] = Optional.empty();
+        this.cards.set(index, Optional.empty());
     }
 
     public Hand newHandWithSwapAt(int index, Card newCard) {
-        Hand newHand = new Hand(Arrays.copyOf(this.cards, this.cards.length));
+        Hand newHand = new Hand(List.copyOf(this.cards));
         newHand.setCardAt(index, newCard);
         return newHand;
     }
 
     public int value() {
-        return Arrays.stream(this.cards)
+        return this.cards.stream()
                 .filter(Optional::isPresent)
                 .mapToInt(c -> c.get().getValue())
                 .sum();
@@ -57,11 +57,11 @@ public final class Hand {
         if (!(o instanceof Hand h)) {
             return false;
         }
-        return Arrays.equals(this.cards, h.getCards());
+        return this.cards.equals(h.getCards());
     }
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(this.cards);
+        return this.getCards().hashCode();
     }
 }

@@ -1,8 +1,6 @@
 package model.card;
 
-import java.util.Collections;
-import java.util.Optional;
-import java.util.Stack;
+import java.util.*;
 
 //SINGLETON
 public class Deck implements Pile {
@@ -34,6 +32,14 @@ public class Deck implements Pile {
             instance = new Deck();
         }
         return instance;
+    }
+
+    public Hand makeHand() {
+        List<Optional<Card>> cards = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            cards.add(this.poll());
+        }
+        return new Hand(cards);
     }
 
     @Override
