@@ -43,7 +43,7 @@ public class Deck implements Pile {
             return Optional.empty();
         }
         else {
-            return Optional.of(this.cards.peek());
+            return Optional.of(this.cards.pop());
         }
     }
 
@@ -54,7 +54,7 @@ public class Deck implements Pile {
             return Optional.empty();
         }
         else {
-            return Optional.of(this.cards.pop());
+            return Optional.of(this.cards.peek());
         }
     }
 
