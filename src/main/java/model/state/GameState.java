@@ -13,11 +13,13 @@ public class GameState {
     private final Deck drawPile;
     private final Discard discardPile;
     private final Player currentTurn;
+    private final int turnsTillGameOver;
 
-    public GameState(Deck drawPile, Discard discardPile, Player currentTurn) {
+    public GameState(Deck drawPile, Discard discardPile, Player currentTurn, int turnsTillGameOver) {
         this.drawPile = drawPile;
         this.discardPile = discardPile;
         this.currentTurn = currentTurn;
+        this.turnsTillGameOver = turnsTillGameOver;
     }
 
     public Deck getDrawPile() {
@@ -28,6 +30,9 @@ public class GameState {
     }
     public Player getCurrentTurn() {
         return this.currentTurn;
+    }
+    public boolean isGameOver() {
+        return this.turnsTillGameOver == 0;
     }
 
     public Set<Move> legalMoves() {
@@ -46,7 +51,7 @@ public class GameState {
             Card drawnCard = drawn.get();
 
             //we might choose to discard the card
-            res.add(new Move(currentHand, drawFromDeck, false, -1));
+            res.add(new Move(currentTurn, currentHand, drawFromDeck, false, -1));
 
             //we might choose swap the card. We can swap with any card in our hand
             Hand oldHand = this.currentTurn.getHand();
@@ -57,7 +62,7 @@ public class GameState {
 
                     //a card exists here which means we can swap it
                     Hand newHand = oldHand.newHandWithSwapAt(finalI, drawnCard);
-                    res.add(new Move(newHand, drawFromDeck, true, finalI));
+                    res.add(new Move(currentTurn, newHand, drawFromDeck, true, finalI));
                 });
             }
         }
