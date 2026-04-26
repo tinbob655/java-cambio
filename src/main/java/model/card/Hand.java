@@ -1,5 +1,6 @@
 package model.card;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,12 +31,8 @@ public final class Hand {
         this.cards.set(index, Optional.of(newCard));
     }
 
-    public void removeCard(int index) {
-
-        if (index < 0 || index > 3) {
-            throw new ArrayIndexOutOfBoundsException("Cannot remove a card outside index range 0-3");
-        }
-        this.cards.set(index, Optional.empty());
+    public void setCards(List<Optional<Card>> cards) {
+        Collections.copy(this.cards, cards);
     }
 
     public Hand newHandWithSwapAt(int index, Card newCard) {
