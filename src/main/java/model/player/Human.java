@@ -23,4 +23,11 @@ public class Human extends Player {
         //if we didn't get a move then return a move which does nothing
         return mv.orElseGet(() -> new Move(this, this.getHand(), false, false, -1));
     }
+
+    @Override
+    public void giveInformation(Information inf) {
+
+        //show the user this card
+        UI.getInstance().peekAtCard(inf.owner(), inf.index());
+    }
 }

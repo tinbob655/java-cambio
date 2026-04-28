@@ -24,6 +24,7 @@ public abstract class Player {
     }
 
     public abstract Move turn(GameState state);
+    public abstract void giveInformation(Information inf);
 
     @Override
     public boolean equals(Object o) {
