@@ -1,5 +1,6 @@
 package model.card;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -36,7 +37,7 @@ public final class Hand {
     }
 
     public Hand newHandWithSwapAt(int index, Card newCard) {
-        Hand newHand = new Hand(List.copyOf(this.cards));
+        Hand newHand = new Hand(new ArrayList<>(this.cards));
         newHand.setCardAt(index, newCard);
         return newHand;
     }
