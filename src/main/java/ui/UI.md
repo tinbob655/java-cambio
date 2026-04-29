@@ -11,10 +11,19 @@ UI ui = UI.getInstance();
 ## Methods
 
 ### `displayState(GameState state)`
-Clears the screen and renders the current board: the discard pile's top card, the draw pile placeholder, and the current player's hand with position indices. Call this at the start of every turn before prompting for a move.
+Clears the screen and renders the current board: opponent hands (face-down), the discard pile's top card, the draw pile placeholder, and your hand as face-down slots with position indices. Call this at the start of every turn before prompting for a move.
 
 ```java
 ui.displayState(state);
+```
+
+---
+
+### `setPlayers(List<Player> players)`
+Registers the full player list so the UI can render opponents and animate swaps for any player. Call once after you build the engine and add players.
+
+```java
+ui.setPlayers(engine.getPlayers());
 ```
 
 ---
@@ -43,7 +52,7 @@ if (move.isEmpty()) {
 Prints a single status line prefixed with `→`. Use this for feedback after a move is applied — e.g. confirming what card was drawn, or flagging an illegal state.
 
 ```java
-ui.displayMessage("Alice drew K♠");
+ui.displayMessage("Alice drew ♠K");
 ui.displayMessage("Draw pile is empty — reshuffling discards");
 ```
 
@@ -113,6 +122,9 @@ GameEngine engine = GameEngine.getInstance();
 // Add players
 engine.addPlayer(new HumanPlayer("Alice", startingHand));
 engine.addPlayer(new HumanPlayer("Bob",   startingHand));
+
+// Register players for UI rendering
+ui.setPlayers(engine.getPlayers());
 
 // Each player peeks at their bottom two cards
 for (Player p : engine.getPlayers()) {

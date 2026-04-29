@@ -1,9 +1,18 @@
 package ui;
 
+import javafx.animation.Animation;
+import javafx.animation.FadeTransition;
+import javafx.animation.ParallelTransition;
+import javafx.animation.PauseTransition;
+import javafx.animation.ScaleTransition;
+import javafx.animation.SequentialTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -15,9 +24,13 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import model.card.Card;
+import model.card.Discard;
 import model.card.Hand;
+import model.card.Rank;
 import model.card.Suit;
+import model.player.Human;
 import model.player.Player;
 import model.state.GameState;
 import model.state.Move;
@@ -42,6 +55,8 @@ public final class UI {
     private static final String CARD_BLACK  = "#1a1a1a";
     private static final String CAMBIO_RED  = "#7b0000";
     private static final String TEXT_DIM    = "#8fad99";
+    private static final String SWAP_GLOW   = "#f0cc55";
+    private static final String TURN_BANNER_BG = "#123b26";
 
     private static final Font FONT_TITLE   = Font.font("Georgia", FontWeight.BOLD,    38);
     private static final Font FONT_LABEL   = Font.font("Georgia", FontWeight.BOLD,    14);
@@ -51,6 +66,14 @@ public final class UI {
     private static final Font FONT_RANK    = Font.font("Georgia", FontWeight.BOLD,    17);
     private static final Font FONT_SUIT_SM = Font.font("Georgia", 13);
     private static final Font FONT_SUIT_LG = Font.font("Georgia", 30);
+    private static final Font FONT_TURN    = Font.font("Georgia", FontWeight.BOLD,    22);
+
+    private static final Duration SWAP_POP_TIME     = Duration.millis(260);
+    private static final Duration SWAP_SETTLE_TIME  = Duration.millis(320);
+    private static final Duration SWAP_HOLD_TIME    = Duration.millis(780);
+    private static final Duration LINE_FADE_IN_TIME = Duration.millis(220);
+    private static final Duration LINE_HOLD_TIME    = Duration.millis(520);
+    private static final Duration LINE_FADE_OUT_TIME = Duration.millis(260);
 
     // ══════════════════════════════════════════════════════════════════════
     //  SINGLETON & JAVAFX STARTUP
@@ -63,9 +86,23 @@ public final class UI {
     private BorderPane root;
     private HBox      pilesRow;
     private HBox      handRow;
-    private FlowPane  buttonRow;
+    private FlowPane  opponentsRow;
+    private HBox      drawnCardRow;
+    private VBox      buttonRow;
     private Label     messageLabel;
     private Label     turnLabel;
+    private Label     thinkingLabel;
+    private Label     drawnCardLabel;
+    private StackPane drawnCardSlot;
+    private StackPane drawPileCardNode;
+    private StackPane discardPileCardNode;
+    private Pane      animationLayer;
+
+    private final List<Player> players = new ArrayList<>();
+    private Player perspectivePlayer;
+    private final Map<Player, List<Optional<Card>>> lastHands = new IdentityHashMap<>();
+    private PendingDraw pendingDraw;
+    private PendingSwap pendingSwap;
 
     private UI() {}
 
@@ -126,7 +163,22 @@ public final class UI {
         vignette.setChoke(0.05);
         root.setEffect(vignette);
 
-        // ── Top: title + current-player label ─────────────────────────────
+        // ── Top: turn banner + title ─────────────────────────────────────
+        turnLabel = new Label("");
+        turnLabel.setFont(FONT_TURN);
+        turnLabel.setTextFill(Color.web(GOLD_BRIGHT));
+        turnLabel.setPadding(new Insets(6, 14, 6, 14));
+        turnLabel.setStyle(
+            "-fx-background-color: " + TURN_BANNER_BG + ";" +
+                "-fx-background-radius: 6;" +
+                "-fx-border-color: " + GOLD + ";" +
+                "-fx-border-radius: 6;"
+        );
+
+        thinkingLabel = new Label("");
+        thinkingLabel.setFont(FONT_SMALL);
+        thinkingLabel.setTextFill(Color.web(TEXT_DIM));
+
         VBox topArea = new VBox(6);
         topArea.setAlignment(Pos.CENTER);
 
@@ -143,45 +195,81 @@ public final class UI {
         rule.setMaxWidth(320);
         rule.setStyle("-fx-background-color: " + GOLD + "; -fx-opacity: 0.35;");
 
-        turnLabel = new Label("");
-        turnLabel.setFont(FONT_LABEL);
-        turnLabel.setTextFill(Color.web(GOLD_BRIGHT));
+        topArea.getChildren().addAll(title, rule);
 
-        topArea.getChildren().addAll(title, rule, turnLabel);
-        BorderPane.setMargin(topArea, new Insets(0, 0, 20, 0));
-        root.setTop(topArea);
+        VBox statusBox = new VBox(6, turnLabel, thinkingLabel);
+        statusBox.setAlignment(Pos.TOP_LEFT);
+
+        BorderPane topPane = new BorderPane();
+        topPane.setLeft(statusBox);
+        topPane.setCenter(topArea);
+        BorderPane.setMargin(topPane, new Insets(0, 0, 20, 0));
+        BorderPane.setMargin(statusBox, new Insets(4, 0, 0, 0));
+        root.setTop(topPane);
 
         // ── Centre: piles + status message ────────────────────────────────
-        VBox center = new VBox(20);
-        center.setAlignment(Pos.CENTER);
+        VBox centerContent = new VBox(20);
+        centerContent.setAlignment(Pos.CENTER);
+
+        opponentsRow = new FlowPane(24, 12);
+        opponentsRow.setAlignment(Pos.CENTER);
+        opponentsRow.setPrefWrapLength(980);
 
         pilesRow = new HBox(60);
         pilesRow.setAlignment(Pos.CENTER);
+
+        drawnCardRow = new HBox(12);
+        drawnCardRow.setAlignment(Pos.CENTER);
+        drawnCardRow.setVisible(false);
+        drawnCardRow.setManaged(false);
+
+        drawnCardLabel = new Label("Drawn card");
+        drawnCardLabel.setFont(FONT_SMALL);
+        drawnCardLabel.setTextFill(Color.web(TEXT_DIM));
+        drawnCardSlot = buildCardNode(Optional.empty(), true);
+        drawnCardRow.getChildren().addAll(drawnCardLabel, drawnCardSlot);
 
         messageLabel = new Label("");
         messageLabel.setFont(FONT_MSG);
         messageLabel.setTextFill(Color.web(TEXT_DIM));
 
-        center.getChildren().addAll(pilesRow, messageLabel);
+        centerContent.getChildren().addAll(opponentsRow, pilesRow, drawnCardRow, messageLabel);
+
+        animationLayer = new Pane();
+        animationLayer.setMouseTransparent(true);
+        animationLayer.setPickOnBounds(false);
+
+        StackPane center = new StackPane(centerContent, animationLayer);
         root.setCenter(center);
 
-        // ── Bottom: hand + action buttons ─────────────────────────────────
+        // ── Bottom: hand ─────────────────────────────────────────────────
         VBox bottom = new VBox(18);
         bottom.setAlignment(Pos.CENTER);
 
         handRow = new HBox(14);
         handRow.setAlignment(Pos.CENTER);
 
-        // FlowPane wraps gracefully when there are four swap buttons + discard
-        buttonRow = new FlowPane(12, 10);
-        buttonRow.setAlignment(Pos.CENTER);
-
-        bottom.getChildren().addAll(handRow, buttonRow);
+        bottom.getChildren().add(handRow);
         BorderPane.setMargin(bottom, new Insets(16, 0, 0, 0));
         root.setBottom(bottom);
 
+        // ── Right: action buttons ────────────────────────────────────────
+        Label actionsLabel = new Label("Actions");
+        actionsLabel.setFont(FONT_SMALL);
+        actionsLabel.setTextFill(Color.web(TEXT_DIM));
+
+        buttonRow = new VBox(10);
+        buttonRow.setAlignment(Pos.TOP_CENTER);
+        buttonRow.setFillWidth(true);
+
+        VBox actionPanel = new VBox(12, actionsLabel, buttonRow);
+        actionPanel.setAlignment(Pos.TOP_CENTER);
+        actionPanel.setPadding(new Insets(10, 12, 10, 12));
+        actionPanel.setPrefWidth(220);
+        root.setRight(actionPanel);
+
         // ── Stage ──────────────────────────────────────────────────────────
-        Scene scene = new Scene(root, 980, 660);
+        Scene scene = new Scene(root, 1280, 780);
         stage.setTitle("Cambio");
         stage.setScene(scene);
         stage.setResizable(false);
@@ -193,30 +281,79 @@ public final class UI {
     // ══════════════════════════════════════════════════════════════════════
 
     /**
+     * Registers the full player list so the UI can render opponents and
+     * animate swaps for any player.
+     */
+    public void setPlayers(List<Player> players) {
+        if (players == null || players.isEmpty()) {
+            return;
+        }
+        this.players.clear();
+        this.players.addAll(players);
+
+        this.perspectivePlayer = players.stream()
+                .filter(p -> p instanceof Human)
+                .findFirst()
+                .orElse(players.get(0));
+
+        lastHands.clear();
+        lastHands.putAll(snapshotHands(this.players));
+    }
+
+    /**
      * Redraws the board at the start of a turn:
-     *   - updates both piles
-     *   - renders the current player's hand (all cards face-down)
-     *   - clears buttons and the message label
+      *   - updates both piles
+      *   - renders opponents face-down and your hand as hidden slots
+      *   - clears buttons and the message label
      *
      * Blocks until the FX thread finishes rendering so the game loop never
      * races ahead of what the player can see.
      */
     public void displayState(GameState state) {
+        List<Player> renderPlayers = resolvePlayers(state);
+        Player viewer = resolvePerspective(renderPlayers, state.getCurrentTurn());
+        Map<Player, List<Optional<Card>>> currentHands = snapshotHands(renderPlayers);
+        List<SwapEvent> swapEvents = detectSwaps(lastHands, currentHands);
+
         CompletableFuture<Void> rendered = new CompletableFuture<>();
         Platform.runLater(() -> {
+            clearAnimationLayer();
             turnLabel.setText(state.getCurrentTurn().getName() + "'s turn");
+            updateThinkingLabel(state.getCurrentTurn());
             updatePiles(state);
-            updateHand(state.getCurrentTurn().getHand(), -1);  // -1 = all face-down
+            updateDrawnCard(Optional.empty());
+
+            Map<Player, List<StackPane>> slotMap = new IdentityHashMap<>();
+            renderOpponents(renderPlayers, viewer, slotMap);
+            updateHand(viewer.getHand(), -1, viewer, slotMap);  // -1 = all face-down
+
             buttonRow.getChildren().clear();
-            messageLabel.setText("");
-            rendered.complete(null);
+            String swapSummary = formatSwapSummary(swapEvents, viewer);
+            messageLabel.setText(swapSummary == null ? "" : "  ›  " + swapSummary);
+
+            lastHands.clear();
+            lastHands.putAll(currentHands);
+
+            Animation drawAnimation = playPendingDrawAnimation(slotMap, viewer);
+            Animation swapLineAnimation = playPendingSwapLineAnimation(slotMap);
+            Animation swapAnimation = playSwapAnimations(swapEvents, slotMap, viewer);
+            Animation swapCombo = combineParallelAnimations(swapLineAnimation, swapAnimation);
+
+            if (drawAnimation == null && swapCombo == null) {
+                rendered.complete(null);
+                return;
+            }
+
+            Animation combined = combineAnimations(drawAnimation, swapCombo);
+            combined.setOnFinished(e -> rendered.complete(null));
+            combined.play();
         });
         await(rendered);
     }
 
     /**
      * Updates the italic status line beneath the piles.
-     * e.g. "Alice drew K♠" or "Draw pile reshuffled."
+      * e.g. "Alice drew ♠K" or "Draw pile reshuffled."
      * Non-blocking — fire and forget.
      */
     public void displayMessage(String message) {
@@ -226,8 +363,8 @@ public final class UI {
     /**
      * Two-step turn prompt. Blocks the game thread while the player decides.
      *
-     * Step 1 — "Draw from Deck", "Draw from Discard [K♠]", "Call Cambio!"
-     * Step 2 — "Discard drawn card", "Swap [0] 7♣", "Swap [1] …", …
+      * Step 1 — "Draw from Deck", "Draw from Discard [♠K]", "Call Cambio!"
+      * Step 2 — "Discard drawn card", "Swap into slot [0]", "Swap into slot [1]", …
      *
      * Returns Optional.empty() if the player calls Cambio.
      */
@@ -255,6 +392,16 @@ public final class UI {
                 : state.getDiscardPile().peek();
         drawnCard.ifPresent(c -> displayMessage("You drew: " + cardString(c)));
 
+        CompletableFuture<Void> drawnShown = new CompletableFuture<>();
+        Platform.runLater(() -> {
+            updateDrawnCard(drawnCard, true);
+            if (!drawFromDeck) {
+                updateDiscardPreviewAfterDraw(state.getDiscardPile());
+            }
+            drawnShown.complete(null);
+        });
+        await(drawnShown);
+
         // ── Step 2: discard or swap ───────────────────────────────────────
         List<Move> candidates = legal.stream()
                 .filter(m -> m.drawFromDeck() == drawFromDeck)
@@ -262,10 +409,10 @@ public final class UI {
                 .collect(Collectors.toList());
 
         CompletableFuture<Move> actionFuture = new CompletableFuture<>();
-        Platform.runLater(() ->
-                showActionButtons(candidates, state.getCurrentTurn().getHand(), actionFuture));
+        Platform.runLater(() -> showActionButtons(candidates, actionFuture));
 
         Move chosen = await(actionFuture);
+        Platform.runLater(() -> updateDrawnCard(Optional.empty()));
         return chosen == null ? Optional.empty() : Optional.of(chosen);
     }
 
@@ -378,27 +525,28 @@ public final class UI {
                     goldButton("Draw from Deck",
                             () -> future.complete(DrawChoice.DECK)));
         }
-        if (discardOk) {
-            String label = state.getDiscardPile().peek()
-                    .map(c -> "Draw from Discard  [" + cardString(c) + "]")
-                    .orElse("Draw from Discard");
-            buttonRow.getChildren().add(
-                    goldButton(label, () -> future.complete(DrawChoice.DISCARD)));
+        String label = state.getDiscardPile().peek()
+            .map(c -> "Draw from Discard  [" + cardString(c) + "]")
+            .orElse("Draw from Discard");
+        Button discardButton = goldButton(label, () -> future.complete(DrawChoice.DISCARD));
+        if (!discardOk) {
+            discardButton.setDisable(true);
+            discardButton.setOpacity(0.45);
+            discardButton.setEffect(null);
         }
+        buttonRow.getChildren().add(discardButton);
 
         buttonRow.getChildren().add(
                 redButton("Call Cambio!", () -> future.complete(DrawChoice.CAMBIO)));
     }
 
-    private void showActionButtons(List<Move> candidates, Hand hand,
-                                   CompletableFuture<Move> future) {
+    private void showActionButtons(List<Move> candidates, CompletableFuture<Move> future) {
         buttonRow.getChildren().clear();
 
         for (Move m : candidates) {
             String label = !m.swap()
                     ? "Discard drawn card"
-                    : "Swap  [" + m.swapIndex() + "]  "
-                    + hand.getCardAt(m.swapIndex()).map(this::cardString).orElse("—");
+                    : "Swap into slot [" + m.swapIndex() + "]";
 
             Move captured = m;   // effectively final for the lambda
             buttonRow.getChildren().add(
@@ -416,13 +564,92 @@ public final class UI {
 
     private void updatePiles(GameState state) {
         pilesRow.getChildren().clear();
+        drawPileCardNode = buildCardNode(Optional.empty(), true);
+        discardPileCardNode = buildCardNode(state.getDiscardPile().peek(), false);
         pilesRow.getChildren().addAll(
-                buildPileBox("Draw Pile", Optional.empty(),              true),
-                buildPileBox("Discard",   state.getDiscardPile().peek(), false)
+            buildPileBox("Draw Pile", drawPileCardNode),
+            buildPileBox("Discard",   discardPileCardNode)
         );
     }
 
-    private VBox buildPileBox(String title, Optional<Card> card, boolean faceDown) {
+    private void updateDiscardPreviewAfterDraw(model.card.Discard discardPile) {
+        if (discardPileCardNode == null || discardPile == null) {
+            return;
+        }
+
+        List<Card> history = discardPile.getHistory();
+        Optional<Card> next = Optional.empty();
+        if (history.size() >= 2) {
+            next = Optional.of(history.get(history.size() - 2));
+        }
+        renderCardNode(discardPileCardNode, next, !next.isPresent());
+    }
+
+    private void updateDrawnCard(Optional<Card> card, boolean revealFace) {
+        if (drawnCardRow == null || drawnCardSlot == null) {
+            return;
+        }
+
+        if (card != null && card.isPresent()) {
+            if (revealFace) {
+                renderCardNode(drawnCardSlot, card, false);
+            } else {
+                renderCardNode(drawnCardSlot, Optional.empty(), true);
+            }
+            drawnCardRow.setVisible(true);
+            drawnCardRow.setManaged(true);
+        } else {
+            renderCardNode(drawnCardSlot, Optional.empty(), true);
+            drawnCardRow.setVisible(false);
+            drawnCardRow.setManaged(false);
+        }
+    }
+
+    private void updateDrawnCard(Optional<Card> card) {
+        updateDrawnCard(card, true);
+    }
+
+    private void renderOpponents(List<Player> renderPlayers, Player viewer,
+                                 Map<Player, List<StackPane>> slotMap) {
+        opponentsRow.getChildren().clear();
+
+        boolean hasOpponents = false;
+        for (Player p : renderPlayers) {
+            if (p == viewer) {
+                continue;
+            }
+            opponentsRow.getChildren().add(buildOpponentBox(p, slotMap));
+            hasOpponents = true;
+        }
+
+        opponentsRow.setVisible(hasOpponents);
+        opponentsRow.setManaged(hasOpponents);
+    }
+
+    private VBox buildOpponentBox(Player opponent, Map<Player, List<StackPane>> slotMap) {
+        VBox box = new VBox(6);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(8, 12, 8, 12));
+        box.setStyle(
+                "-fx-background-color: " + FELT_LIGHT + ";" +
+                        "-fx-background-radius: 8;" +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 8, 0, 0, 2);"
+        );
+
+        Label name = new Label(opponent.getName());
+        name.setFont(FONT_LABEL);
+        name.setTextFill(Color.WHITE);
+
+        HBox cards = new HBox(10);
+        cards.setAlignment(Pos.CENTER);
+        List<StackPane> slots = renderHandRow(cards, null, opponent.getHand(), -1, false);
+        slotMap.put(opponent, slots);
+
+        box.getChildren().addAll(name, cards);
+        return box;
+    }
+
+    private VBox buildPileBox(String title, StackPane cardNode) {
         VBox box = new VBox(8);
         box.setAlignment(Pos.CENTER);
 
@@ -430,7 +657,7 @@ public final class UI {
         lbl.setFont(FONT_SMALL);
         lbl.setTextFill(Color.web(TEXT_DIM));
 
-        box.getChildren().addAll(lbl, buildCardNode(card, faceDown));
+        box.getChildren().addAll(lbl, cardNode);
         return box;
     }
 
@@ -439,27 +666,50 @@ public final class UI {
      *
      * @param revealIndex  Which position to show face-up. Pass -1 for all face-down.
      */
+    private List<StackPane> updateHand(Hand hand, int revealIndex,
+                                       Player owner, Map<Player, List<StackPane>> slotMap) {
+        List<StackPane> slots = renderHandRow(handRow, "Your hand", hand, revealIndex, true);
+        if (owner != null && slotMap != null) {
+            slotMap.put(owner, slots);
+        }
+        return slots;
+    }
+
     private void updateHand(Hand hand, int revealIndex) {
-        handRow.getChildren().clear();
+        updateHand(hand, revealIndex, null, null);
+    }
 
-        Label lbl = new Label("Your hand");
-        lbl.setFont(FONT_SMALL);
-        lbl.setTextFill(Color.web(TEXT_DIM));
-        HBox.setMargin(lbl, new Insets(0, 18, 0, 0));
-        handRow.getChildren().add(lbl);
+    private List<StackPane> renderHandRow(HBox targetRow, String labelText,
+                                          Hand hand, int revealIndex, boolean showIndices) {
+        targetRow.getChildren().clear();
 
+        if (labelText != null && !labelText.isBlank()) {
+            Label lbl = new Label(labelText);
+            lbl.setFont(FONT_SMALL);
+            lbl.setTextFill(Color.web(TEXT_DIM));
+            HBox.setMargin(lbl, new Insets(0, 18, 0, 0));
+            targetRow.getChildren().add(lbl);
+        }
+
+        List<StackPane> slots = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
             VBox slot = new VBox(5);
             slot.setAlignment(Pos.CENTER);
 
-            Label idx = new Label("[" + i + "]");
-            idx.setFont(FONT_SMALL);
-            idx.setTextFill(Color.web(TEXT_DIM));
+            if (showIndices) {
+                Label idx = new Label("[" + i + "]");
+                idx.setFont(FONT_SMALL);
+                idx.setTextFill(Color.web(TEXT_DIM));
+                slot.getChildren().add(idx);
+            }
 
             boolean faceDown = (i != revealIndex);
-            slot.getChildren().addAll(idx, buildCardNode(hand.getCardAt(i), faceDown));
-            handRow.getChildren().add(slot);
+            StackPane cardNode = buildCardNode(hand.getCardAt(i), faceDown);
+            slot.getChildren().add(cardNode);
+            targetRow.getChildren().add(slot);
+            slots.add(cardNode);
         }
+        return slots;
     }
 
     /**
@@ -470,10 +720,15 @@ public final class UI {
      * Empty slot: same navy back (an Optional.empty() with faceDown=true shows as back).
      */
     private StackPane buildCardNode(Optional<Card> card, boolean faceDown) {
-
         StackPane pane = new StackPane();
         pane.setPrefSize(72, 104);
         pane.setMinSize(72, 104);
+        renderCardNode(pane, card, faceDown);
+        return pane;
+    }
+
+    private void renderCardNode(StackPane pane, Optional<Card> card, boolean faceDown) {
+        pane.getChildren().clear();
 
         if (faceDown || card.isEmpty()) {
             pane.setStyle(
@@ -528,8 +783,6 @@ public final class UI {
             StackPane.setAlignment(suitLarge, Pos.CENTER);
             pane.getChildren().addAll(suitLarge, corner);
         }
-
-        return pane;
     }
 
     // ── Button factories ──────────────────────────────────────────────────
@@ -548,6 +801,7 @@ public final class UI {
         Button btn = new Button(text);
         btn.setFont(FONT_BTN);
         btn.setPadding(new Insets(10, 22, 10, 22));
+        btn.setMaxWidth(Double.MAX_VALUE);
         btn.setStyle(
                 "-fx-background-color: " + bgHex + ";" +
                         "-fx-text-fill: " + fgHex + ";" +
@@ -571,6 +825,327 @@ public final class UI {
     // ══════════════════════════════════════════════════════════════════════
 
     private enum DrawChoice { DECK, DISCARD, CAMBIO }
+
+    private static final class SwapEvent {
+        private final Player player;
+        private final int index;
+
+        private SwapEvent(Player player, int index) {
+            this.player = player;
+            this.index = index;
+        }
+    }
+
+    private static final class PendingDraw {
+        private final Player player;
+        private final boolean fromDeck;
+
+        private PendingDraw(Player player, boolean fromDeck) {
+            this.player = player;
+            this.fromDeck = fromDeck;
+        }
+    }
+
+    private static final class PendingSwap {
+        private final Player player;
+        private final int index;
+        private final boolean fromDeck;
+
+        private PendingSwap(Player player, int index, boolean fromDeck) {
+            this.player = player;
+            this.index = index;
+            this.fromDeck = fromDeck;
+        }
+    }
+
+    /**
+     * Queues a draw animation for the next render pass (typically for bots).
+     */
+    public void queueDrawAnimation(Move move, Optional<Card> drawnCard) {
+        if (move == null || move.commencedBy() == null) {
+            return;
+        }
+        if (move.commencedBy() instanceof Human) {
+            return;
+        }
+        this.pendingDraw = new PendingDraw(move.commencedBy(), move.drawFromDeck());
+        if (move.swap()) {
+            this.pendingSwap = new PendingSwap(move.commencedBy(), move.swapIndex(), move.drawFromDeck());
+        }
+    }
+
+    private List<Player> resolvePlayers(GameState state) {
+        if (!players.isEmpty()) {
+            return new ArrayList<>(players);
+        }
+        return Collections.singletonList(state.getCurrentTurn());
+    }
+
+    private Player resolvePerspective(List<Player> renderPlayers, Player fallback) {
+        if (perspectivePlayer != null) {
+            for (Player p : renderPlayers) {
+                if (p == perspectivePlayer) {
+                    return perspectivePlayer;
+                }
+            }
+        }
+
+        for (Player p : renderPlayers) {
+            if (p instanceof Human) {
+                return p;
+            }
+        }
+        return renderPlayers.isEmpty() ? fallback : renderPlayers.get(0);
+    }
+
+    private Map<Player, List<Optional<Card>>> snapshotHands(List<Player> renderPlayers) {
+        Map<Player, List<Optional<Card>>> snapshot = new IdentityHashMap<>();
+        for (Player p : renderPlayers) {
+            snapshot.put(p, new ArrayList<>(p.getHand().getCards()));
+        }
+        return snapshot;
+    }
+
+    private List<SwapEvent> detectSwaps(Map<Player, List<Optional<Card>>> previous,
+                                        Map<Player, List<Optional<Card>>> current) {
+        List<SwapEvent> swaps = new ArrayList<>();
+        for (Map.Entry<Player, List<Optional<Card>>> entry : current.entrySet()) {
+            Player player = entry.getKey();
+            List<Optional<Card>> curr = entry.getValue();
+            List<Optional<Card>> prev = previous.get(player);
+            if (prev == null || prev.size() != curr.size()) {
+                continue;
+            }
+
+            int changedIndex = -1;
+            for (int i = 0; i < curr.size(); i++) {
+                if (!Objects.equals(curr.get(i), prev.get(i))) {
+                    if (changedIndex != -1) {
+                        changedIndex = -2;
+                        break;
+                    }
+                    changedIndex = i;
+                }
+            }
+
+            if (changedIndex >= 0) {
+                swaps.add(new SwapEvent(player, changedIndex));
+            }
+        }
+        return swaps;
+    }
+
+    private Animation playSwapAnimations(List<SwapEvent> swapEvents,
+                                         Map<Player, List<StackPane>> slotMap,
+                                         Player viewer) {
+        if (swapEvents.isEmpty()) {
+            return null;
+        }
+
+        List<Animation> animations = new ArrayList<>();
+        for (SwapEvent event : swapEvents) {
+            List<StackPane> slots = slotMap.get(event.player);
+            if (slots == null || event.index < 0 || event.index >= slots.size()) {
+                continue;
+            }
+
+            animations.add(buildSwapAnimation(slots.get(event.index)));
+        }
+
+        if (animations.isEmpty()) {
+            return null;
+        }
+
+        ParallelTransition group = new ParallelTransition();
+        group.getChildren().addAll(animations);
+        return group;
+    }
+
+    private Animation playPendingDrawAnimation(Map<Player, List<StackPane>> slotMap, Player viewer) {
+        if (pendingDraw == null) {
+            return null;
+        }
+
+        PendingDraw draw = pendingDraw;
+        pendingDraw = null;
+
+        StackPane source = draw.fromDeck ? drawPileCardNode : discardPileCardNode;
+        Node target = resolveDrawTarget(draw.player, slotMap, viewer);
+        if (source == null || target == null) {
+            return null;
+        }
+
+        return buildMoveLineAnimation(source, target);
+    }
+
+    private Animation playPendingSwapLineAnimation(Map<Player, List<StackPane>> slotMap) {
+        if (pendingSwap == null) {
+            return null;
+        }
+
+        PendingSwap swap = pendingSwap;
+        pendingSwap = null;
+
+        StackPane source = swap.fromDeck ? drawPileCardNode : discardPileCardNode;
+        List<StackPane> slots = slotMap.get(swap.player);
+        if (source == null || slots == null || swap.index < 0 || swap.index >= slots.size()) {
+            return null;
+        }
+
+        Animation incoming = buildMoveLineAnimation(source, slots.get(swap.index));
+        Animation outgoing = buildMoveLineAnimation(slots.get(swap.index), discardPileCardNode);
+        return combineParallelAnimations(incoming, outgoing);
+    }
+
+    private Animation combineAnimations(Animation first, Animation second) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        return new SequentialTransition(first, second);
+    }
+
+    private Animation combineParallelAnimations(Animation first, Animation second) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        return new ParallelTransition(first, second);
+    }
+
+    private Node resolveDrawTarget(Player player, Map<Player, List<StackPane>> slotMap, Player viewer) {
+        if (player == viewer && drawnCardSlot != null) {
+            return drawnCardSlot;
+        }
+        List<StackPane> slots = slotMap.get(player);
+        if (slots == null || slots.isEmpty()) {
+            return null;
+        }
+        return slots.get(0);
+    }
+
+    private Animation buildMoveLineAnimation(Node source, Node target) {
+        if (animationLayer == null || source == null || target == null) {
+            return null;
+        }
+
+        Point2D sourcePoint = nodeCenterInLayer(source);
+        Point2D targetPoint = nodeCenterInLayer(target);
+        if (sourcePoint == null || targetPoint == null) {
+            return null;
+        }
+
+        javafx.scene.shape.Line line = new javafx.scene.shape.Line(
+                sourcePoint.getX(), sourcePoint.getY(),
+                targetPoint.getX(), targetPoint.getY()
+        );
+        line.setStroke(Color.web(SWAP_GLOW));
+        line.setStrokeWidth(3.0);
+        line.setOpacity(0.0);
+        line.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+
+        animationLayer.getChildren().add(line);
+
+        FadeTransition fadeIn = new FadeTransition(LINE_FADE_IN_TIME, line);
+        fadeIn.setFromValue(0.0);
+        fadeIn.setToValue(1.0);
+
+        PauseTransition hold = new PauseTransition(LINE_HOLD_TIME);
+
+        FadeTransition fadeOut = new FadeTransition(LINE_FADE_OUT_TIME, line);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        SequentialTransition seq = new SequentialTransition(fadeIn, hold, fadeOut);
+        seq.setOnFinished(e -> animationLayer.getChildren().remove(line));
+        return seq;
+    }
+
+    private Point2D nodeCenterInLayer(Node node) {
+        if (node.getScene() == null) {
+            return null;
+        }
+        Bounds bounds = node.localToScene(node.getBoundsInLocal());
+        double centerX = bounds.getMinX() + bounds.getWidth() / 2.0;
+        double centerY = bounds.getMinY() + bounds.getHeight() / 2.0;
+        return animationLayer.sceneToLocal(centerX, centerY);
+    }
+
+    private void clearAnimationLayer() {
+        if (animationLayer != null) {
+            animationLayer.getChildren().clear();
+        }
+    }
+
+    private Animation buildSwapAnimation(StackPane slot) {
+        Region glow = new Region();
+        glow.setPrefSize(72, 104);
+        glow.setMinSize(72, 104);
+        glow.setStyle(
+                "-fx-background-color: rgba(240, 204, 85, 0.25);" +
+                        "-fx-border-color: " + SWAP_GLOW + ";" +
+                        "-fx-border-width: 2;" +
+                        "-fx-background-radius: 8;" +
+                        "-fx-border-radius: 8;"
+        );
+        glow.setOpacity(0.0);
+
+        Label tag = new Label("SWAP");
+        tag.setFont(FONT_SMALL);
+        tag.setTextFill(Color.web(SWAP_GLOW));
+        tag.setStyle(
+                "-fx-background-color: rgba(0,0,0,0.55);" +
+                        "-fx-background-radius: 4;" +
+                        "-fx-padding: 2 6;"
+        );
+        tag.setOpacity(0.0);
+        StackPane.setAlignment(tag, Pos.TOP_RIGHT);
+        StackPane.setMargin(tag, new Insets(4, 4, 0, 0));
+
+        slot.getChildren().addAll(glow, tag);
+
+        ScaleTransition pop = new ScaleTransition(SWAP_POP_TIME, slot);
+        pop.setFromX(0.92);
+        pop.setFromY(0.92);
+        pop.setToX(1.08);
+        pop.setToY(1.08);
+
+        ScaleTransition settle = new ScaleTransition(SWAP_SETTLE_TIME, slot);
+        settle.setFromX(1.08);
+        settle.setFromY(1.08);
+        settle.setToX(1.0);
+        settle.setToY(1.0);
+
+        FadeTransition glowIn = new FadeTransition(Duration.millis(140), glow);
+        glowIn.setFromValue(0.0);
+        glowIn.setToValue(0.9);
+
+        FadeTransition tagIn = new FadeTransition(Duration.millis(140), tag);
+        tagIn.setFromValue(0.0);
+        tagIn.setToValue(1.0);
+
+        FadeTransition glowOut = new FadeTransition(Duration.millis(220), glow);
+        glowOut.setFromValue(0.9);
+        glowOut.setToValue(0.0);
+
+        FadeTransition tagOut = new FadeTransition(Duration.millis(220), tag);
+        tagOut.setFromValue(1.0);
+        tagOut.setToValue(0.0);
+
+        ParallelTransition popGroup = new ParallelTransition(pop, glowIn, tagIn);
+        PauseTransition hold = new PauseTransition(SWAP_HOLD_TIME);
+        ParallelTransition fadeGroup = new ParallelTransition(glowOut, tagOut);
+        SequentialTransition sequence = new SequentialTransition(popGroup, settle, hold, fadeGroup);
+        sequence.setOnFinished(e -> {
+            slot.getChildren().removeAll(glow, tag);
+        });
+
+        return sequence;
+    }
 
     /**
      * Blocks the calling (game) thread until the CompletableFuture resolves.
@@ -608,7 +1183,35 @@ public final class UI {
     }
 
     private String cardString(Card c) {
-        return rankShort(c) + suitSymbol(c.suit());
+        if (c.rank() == Rank.JOKER) {
+            return "★";
+        }
+        return suitSymbol(c.suit()) + rankShort(c);
+    }
+
+    private void updateThinkingLabel(Player currentTurn) {
+        if (thinkingLabel == null) {
+            return;
+        }
+        if (currentTurn instanceof Human) {
+            thinkingLabel.setText("");
+        } else {
+            thinkingLabel.setText(currentTurn.getName() + " is thinking...");
+        }
+    }
+
+    private String formatSwapSummary(List<SwapEvent> events, Player viewer) {
+        if (events == null || events.isEmpty()) {
+            return null;
+        }
+
+        if (events.size() == 1) {
+            SwapEvent event = events.get(0);
+            String who = event.player == viewer ? "You" : event.player.getName();
+            return who + " swapped slot [" + event.index + "]";
+        }
+
+        return "Multiple swaps happened";
     }
 
     private int handScore(Hand hand) {
