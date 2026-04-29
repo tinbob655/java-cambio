@@ -1,13 +1,16 @@
 package engine;
 
 
+import model.card.Card;
 import model.card.Deck;
 import model.card.Discard;
 import model.player.Player;
 import model.state.GameState;
 import model.state.Move;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 //SINGLETON
 public final class GameEngine {
@@ -17,6 +20,8 @@ public final class GameEngine {
     private int turnIndex;
     private Player cambiocalledBy;
     private GameState state;
+    private Move lastMove;
+    private Optional<Card> lastDrawnCard = Optional.empty();
 
     private GameEngine() {
         this.turnIndex = 0;
@@ -72,14 +77,33 @@ public final class GameEngine {
         this.players.add(p);
     }
 
+    public List<Player> getPlayers() {
+        return Collections.unmodifiableList(this.players);
+    }
+
+    public Move getLastMove() {
+        return this.lastMove;
+    }
+
+    public Optional<Card> getLastDrawnCard() {
+        return this.lastDrawnCard;
+    }
+
     public void turn() {
 
         //get the move we want to perform
         Player currentPlayer = this.players.get(this.turnIndex);
         Move mv = currentPlayer.turn(this.getState());
 
+        Optional<Card> drawnCard = mv.drawFromDeck()
+                ? Deck.getInstance().peek()
+                : Discard.getInstance().peek();
+
         //do the move
         this.state = this.advance(mv);
+
+        this.lastMove = mv;
+        this.lastDrawnCard = drawnCard;
 
         //increment the turn index
         this.turnIndex = (this.turnIndex + 1) % this.players.size();
@@ -91,11 +115,16 @@ public final class GameEngine {
         Player owner = mv.commencedBy();
 
         //do drawing from deck / discard
-        if (mv.drawFromDeck()) {
-            Deck.getInstance().poll();
-        }
-        else {
-            Discard.getInstance().poll();
+        Optional<Card> drawn = mv.drawFromDeck()
+                ? Deck.getInstance().poll()
+                : Discard.getInstance().poll();
+
+        //resolve discards
+        if (mv.swap()) {
+            owner.getHand().getCardAt(mv.swapIndex())
+                    .ifPresent(c -> Discard.getInstance().add(c));
+        } else {
+            drawn.ifPresent(c -> Discard.getInstance().add(c));
         }
 
         //update the owner's hand
