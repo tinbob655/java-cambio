@@ -12,7 +12,10 @@ public class Main {
 
         //make the engine
         buildEngine();
-        UI.getInstance().displayState(GameEngine.getInstance().getState());
+        GameEngine engine = GameEngine.getInstance();
+        UI ui = UI.getInstance();
+        ui.setPlayers(engine.getPlayers());
+        ui.displayState(engine.getState());
 
         //the game starts by showing each player their first two cards
 
@@ -20,10 +23,12 @@ public class Main {
         while (!GameEngine.getInstance().getState().isGameOver()) {
 
             //do a turn
-            GameEngine.getInstance().turn();
+            engine.turn();
+
+            ui.queueDrawAnimation(engine.getLastMove(), engine.getLastDrawnCard());
 
             //update UI
-            UI.getInstance().displayState(GameEngine.getInstance().getState());
+            ui.displayState(engine.getState());
         }
     }
 
