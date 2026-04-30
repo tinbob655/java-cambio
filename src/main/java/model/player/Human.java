@@ -7,7 +7,9 @@ import model.state.GameState;
 import model.state.Move;
 import ui.UI;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class Human extends Player {
 
@@ -34,16 +36,30 @@ public class Human extends Player {
 
     @Override
     public Pair<Player, Integer> otherPlayerCardTarget() {
-        return null;
+        UI ui = UI.getInstance();
+        List<Player> candidates = GameEngine.getInstance().getPlayers().stream()
+                .filter(p -> !p.equals(this))
+                .collect(Collectors.toList());
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return ui.promptCardTarget("Choose a player to target", candidates, true);
     }
 
     @Override
     public Pair<Player, Integer> selfCardTarget() {
-        return null;
+        UI ui = UI.getInstance();
+        Integer index = ui.promptCardIndex("Choose one of your cards", true);
+        return index == null ? null : new Pair<>(this, index);
     }
 
     @Override
     public Pair<Player, Integer> anyPlayerCardTarget() {
-        return null;
+        UI ui = UI.getInstance();
+        List<Player> candidates = GameEngine.getInstance().getPlayers();
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return ui.promptCardTarget("Choose any player to target", candidates, false);
     }
 }

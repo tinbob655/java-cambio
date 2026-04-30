@@ -26,6 +26,7 @@ import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import javafx.util.Pair;
 import model.card.Card;
 import model.card.Discard;
 import model.card.Hand;
@@ -444,6 +445,36 @@ public final class UI {
     }
 
     /**
+     * Prompts the user to pick a player and then a card index.
+     */
+    public Pair<Player, Integer> promptCardTarget(String prompt,
+                                                  List<Player> candidates,
+                                                  boolean allowCancel) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        CompletableFuture<Player> playerFuture = new CompletableFuture<>();
+        Platform.runLater(() -> showPlayerChoiceButtons(prompt, candidates, allowCancel, playerFuture));
+        Player selected = await(playerFuture);
+        if (selected == null) {
+            return null;
+        }
+
+        Integer index = promptCardIndex("Choose a card from " + selected.getName(), allowCancel);
+        return index == null ? null : new Pair<>(selected, index);
+    }
+
+    /**
+     * Prompts the user to pick a hand slot index (0-3).
+     */
+    public Integer promptCardIndex(String prompt, boolean allowCancel) {
+        CompletableFuture<Integer> future = new CompletableFuture<>();
+        Platform.runLater(() -> showIndexChoiceButtons(prompt, allowCancel, future));
+        return await(future);
+    }
+
+    /**
      * Reveals only the card at {@code index} — all other positions stay face-down.
      * Blocks until the player clicks "Hide".
      * Used at game start when players peek at their two bottom cards.
@@ -562,6 +593,55 @@ public final class UI {
                     goldButton(label, () -> {
                         buttonRow.getChildren().clear();
                         future.complete(captured);
+                    })
+            );
+        }
+    }
+
+    private void showPlayerChoiceButtons(String prompt, List<Player> candidates,
+                                         boolean allowCancel, CompletableFuture<Player> future) {
+        messageLabel.setText("  ›  " + prompt);
+        buttonRow.getChildren().clear();
+
+        for (Player candidate : candidates) {
+            buttonRow.getChildren().add(
+                    goldButton(candidate.getName(), () -> {
+                        buttonRow.getChildren().clear();
+                        future.complete(candidate);
+                    })
+            );
+        }
+
+        if (allowCancel) {
+            buttonRow.getChildren().add(
+                    redButton("Cancel", () -> {
+                        buttonRow.getChildren().clear();
+                        future.complete(null);
+                    })
+            );
+        }
+    }
+
+    private void showIndexChoiceButtons(String prompt, boolean allowCancel,
+                                        CompletableFuture<Integer> future) {
+        messageLabel.setText("  ›  " + prompt);
+        buttonRow.getChildren().clear();
+
+        for (int i = 0; i < 4; i++) {
+            int index = i;
+            buttonRow.getChildren().add(
+                    goldButton("Slot [" + index + "]", () -> {
+                        buttonRow.getChildren().clear();
+                        future.complete(index);
+                    })
+            );
+        }
+
+        if (allowCancel) {
+            buttonRow.getChildren().add(
+                    redButton("Cancel", () -> {
+                        buttonRow.getChildren().clear();
+                        future.complete(null);
                     })
             );
         }
