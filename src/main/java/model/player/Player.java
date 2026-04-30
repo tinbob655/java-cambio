@@ -1,5 +1,6 @@
 package model.player;
 
+import javafx.util.Pair;
 import model.card.Hand;
 import model.state.GameState;
 import model.state.Move;
@@ -25,6 +26,9 @@ public abstract class Player {
 
     public abstract Move turn(GameState state);
     public abstract void giveInformation(Information inf);
+    public abstract Pair<Player, Integer> otherPlayerCardTarget();
+    public abstract Pair<Player, Integer> selfCardTarget();
+    public abstract Pair<Player, Integer> anyPlayerCardTarget();
 
     @Override
     public boolean equals(Object o) {

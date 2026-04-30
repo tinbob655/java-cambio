@@ -1,9 +1,12 @@
 package engine;
 
 
+import javafx.util.Pair;
 import model.card.Card;
 import model.card.Deck;
 import model.card.Discard;
+import model.card.Rank;
+import model.player.Information;
 import model.player.Player;
 import model.state.GameState;
 import model.state.Move;
@@ -100,13 +103,10 @@ public final class GameEngine {
                 : Discard.getInstance().peek();
 
         //do the move
-        this.state = this.advance(mv);
-
         this.lastMove = mv;
         this.lastDrawnCard = drawnCard;
-
-        //increment the turn index
         this.turnIndex = (this.turnIndex + 1) % this.players.size();
+        this.state = this.advance(mv);
     }
 
     private GameState advance(Move mv) {
@@ -115,21 +115,96 @@ public final class GameEngine {
         Player owner = mv.commencedBy();
 
         //do drawing from deck / discard
-        Optional<Card> drawn = mv.drawFromDeck()
-                ? Deck.getInstance().poll()
-                : Discard.getInstance().poll();
+        Card drawnCard = mv.drawFromDeck() ? Deck.getInstance().poll().orElseThrow() : Discard.getInstance().poll().orElseThrow();
 
-        //resolve discards
-        if (mv.swap()) {
-            owner.getHand().getCardAt(mv.swapIndex())
-                    .ifPresent(c -> Discard.getInstance().add(c));
-        } else {
-            drawn.ifPresent(c -> Discard.getInstance().add(c));
+        boolean shouldSwap = mv.swap();
+        if (mv.finalHand() != null) {
+            boolean handChanges = !mv.finalHand().equals(owner.getHand());
+            if (shouldSwap != handChanges) {
+                shouldSwap = handChanges;
+            }
         }
 
-        //update the owner's hand
-        owner.getHand().setCards(mv.finalHand().getCards());
+        //use our card
+        if (shouldSwap) {
+
+            //we want to swap the drawn card with the card in the swap index
+            Card oldCard = owner.getHand().getCardAt(mv.swapIndex()).orElseThrow();
+            owner.getHand().setCardAt(mv.swapIndex(), drawnCard);
+            Discard.getInstance().add(oldCard);
+        }
+        else {
+
+            //special effects only apply if we discard the card
+            this.doSpecialCard(drawnCard.rank(), owner);
+
+            //we are not swapping so just discard the card we picked up
+            Discard.getInstance().add(drawnCard);
+        }
 
         return this.recomputeState();
+    }
+
+    private void doSpecialCard(Rank rank, Player currentTurn) {
+
+        switch (rank) {
+
+            case SEVEN, EIGHT -> {
+
+                //a seven or eight lets us look at another player's card
+                this.showCard(currentTurn, TargetType.OTHER);
+            }
+
+            case NINE, TEN -> {
+
+                //a nine or ten lets us look at one of our own cards
+                this.showCard(currentTurn, TargetType.SELF);
+            }
+
+            case JACK -> {
+
+                //a jack lets us swap any two cards
+                Pair<Player, Integer> target1 = currentTurn.anyPlayerCardTarget();
+                Pair<Player, Integer> target2 = currentTurn.anyPlayerCardTarget();
+                this.swapTwoCards(target1.getKey(), target1.getValue(), target2.getKey(), target2.getValue());
+            }
+
+            case QUEEN -> {
+
+                //a queen lets us look at any card and then optionally do a swap
+                this.showCard(currentTurn, TargetType.ANY);
+            }
+        }
+    }
+
+    private void swapTwoCards(Player player1, int index1, Player player2, int index2) {
+
+        Card oldPlayer1Card = player1.getHand().getCardAt(index1).orElseThrow();
+        Card oldPlayer2Card = player2.getHand().getCardAt(index2).orElseThrow();
+        player1.getHand().setCardAt(index1, oldPlayer2Card);
+        player2.getHand().setCardAt(index2, oldPlayer1Card);
+    }
+
+    private enum TargetType {SELF, OTHER, ANY};
+
+    private void showCard(Player currentTurn, TargetType type) {
+
+        //get our target information
+        Pair<Player, Integer> target;
+        switch (type) {
+            case SELF -> target = currentTurn.selfCardTarget();
+            case OTHER -> target = currentTurn.otherPlayerCardTarget();
+            case ANY -> target = currentTurn.anyPlayerCardTarget();
+            default -> throw new IllegalArgumentException("TargetType must be SELF, OTHER or ANY");
+        }
+
+        //the player may decline our offer
+        if (target == null) {
+            return;
+        }
+
+        //show the current player the target card
+        Card showCard = target.getKey().getHand().getCardAt(target.getValue()).orElseThrow();
+        currentTurn.giveInformation(new Information(target.getKey(), showCard, target.getValue()));
     }
 }

@@ -1,5 +1,7 @@
 package model.player;
 
+import engine.GameEngine;
+import javafx.util.Pair;
 import model.card.Card;
 import model.card.Hand;
 import model.card.Rank;
@@ -8,6 +10,7 @@ import model.state.GameState;
 import model.state.Move;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Bot extends Player {
 
@@ -16,6 +19,9 @@ public class Bot extends Player {
 
     //if we think we have a score <= this then we will call cambio
     private static final int CAMBIO_THRESHOLD = 8;
+
+    //at what point the bot thinks it knows enough about its own hand
+    private static final int OWN_HAND_KNOWLEDGE_THRESHOLD = 2;
 
 
     private static final List<Card> FULL_DECK = new ArrayList<>();
@@ -44,6 +50,94 @@ public class Bot extends Player {
         knowledge.removeIf(i -> i.owner().equals(inf.owner()) && i.index() == inf.index());
 
         knowledge.add(inf);
+    }
+
+    @Override
+    public Pair<Player, Integer> otherPlayerCardTarget() {
+
+        //if we know nothing about someone then ask about them
+        for (Player p : GameEngine.getInstance().getPlayers()) {
+            if (this.knowledge.stream().noneMatch(inf -> inf.owner().equals(p)) && !p.equals(this)) {
+
+                //we know nothing about player 'p'. Ask about them
+                int randomIndex = new Random().nextInt(4);
+                return new Pair<>(p, randomIndex);
+            }
+        }
+
+        //it is now given that we know about all players
+        //find our the player we know the least about
+        Pair<Player, int[]> minPair = this.knowledge.stream()
+
+                //get rid our ourselves
+                .filter(inf -> !inf.owner().equals(this))
+
+                //group knowledge by each player
+                .collect(Collectors.groupingBy(
+                        Information::owner,
+                        Collectors.mapping(Information::index, Collectors.toList())
+                ))
+                .entrySet().stream()
+
+                //extract player we know the least about
+                .min(Comparator.comparingInt(entry -> entry.getValue().size()))
+
+                //create the array of indexes we know
+                .map(entry -> new Pair<>(
+                        entry.getKey(),
+                        entry.getValue().stream().mapToInt(Integer::intValue).toArray()
+                ))
+                .orElse(null);
+
+        //now request our information
+        assert minPair != null;
+        int randomIndex = new Random().nextInt(minPair.getValue().length);
+        return new Pair<>(minPair.getKey(), minPair.getValue()[randomIndex]);
+    }
+
+    @Override
+    public Pair<Player, Integer> selfCardTarget() {
+
+        //choose a random card in our own hand which we don't know yet
+        List<Integer> knownCardIndexes = this.knowledge.parallelStream()
+                .filter(inf -> inf.owner().equals(this))
+                .map(Information::index)
+                .toList();
+
+        if (knownCardIndexes.size() >= 4) {
+
+            //we already know everything in our hand, decline the offer
+            return null;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            if (!knownCardIndexes.contains(i)) {
+
+                //we found a card we didn't know in our hand
+                return new Pair<>(this, i);
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public Pair<Player, Integer> anyPlayerCardTarget() {
+
+        //we want to know a threshold amount of our own cards
+        long knownCardsCount = this.knowledge.parallelStream()
+                .filter(inf -> inf.owner().equals(this))
+                .count();
+        if (knownCardsCount >= OWN_HAND_KNOWLEDGE_THRESHOLD) {
+
+            //we know enough about our own hand
+            return this.otherPlayerCardTarget();
+        }
+        else {
+
+            //we do not know enough about our own hand
+            return this.selfCardTarget();
+        }
     }
 
     @Override

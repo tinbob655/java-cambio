@@ -1,6 +1,7 @@
 package model.player;
 
 import engine.GameEngine;
+import javafx.util.Pair;
 import model.card.Hand;
 import model.state.GameState;
 import model.state.Move;
@@ -29,5 +30,20 @@ public class Human extends Player {
 
         //show the user this card
         UI.getInstance().peekAtCard(inf.owner(), inf.index());
+    }
+
+    @Override
+    public Pair<Player, Integer> otherPlayerCardTarget() {
+        return null;
+    }
+
+    @Override
+    public Pair<Player, Integer> selfCardTarget() {
+        return null;
+    }
+
+    @Override
+    public Pair<Player, Integer> anyPlayerCardTarget() {
+        return null;
     }
 }

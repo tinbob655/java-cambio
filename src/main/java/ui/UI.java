@@ -20,6 +20,7 @@ import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.InnerShadow;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Polygon;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
@@ -74,6 +75,8 @@ public final class UI {
     private static final Duration LINE_FADE_IN_TIME = Duration.millis(220);
     private static final Duration LINE_HOLD_TIME    = Duration.millis(520);
     private static final Duration LINE_FADE_OUT_TIME = Duration.millis(260);
+    private static final double ARROW_HEAD_LENGTH = 12.0;
+    private static final double ARROW_HEAD_WIDTH  = 8.0;
 
     // ══════════════════════════════════════════════════════════════════════
     //  SINGLETON & JAVAFX STARTUP
@@ -84,6 +87,7 @@ public final class UI {
 
     private Stage     stage;
     private BorderPane root;
+    private StackPane sceneRoot;
     private HBox      pilesRow;
     private HBox      handRow;
     private FlowPane  opponentsRow;
@@ -101,7 +105,6 @@ public final class UI {
     private final List<Player> players = new ArrayList<>();
     private Player perspectivePlayer;
     private final Map<Player, List<Optional<Card>>> lastHands = new IdentityHashMap<>();
-    private PendingDraw pendingDraw;
     private PendingSwap pendingSwap;
 
     private UI() {}
@@ -239,8 +242,7 @@ public final class UI {
         animationLayer.setMouseTransparent(true);
         animationLayer.setPickOnBounds(false);
 
-        StackPane center = new StackPane(centerContent, animationLayer);
-        root.setCenter(center);
+        root.setCenter(centerContent);
 
         // ── Bottom: hand ─────────────────────────────────────────────────
         VBox bottom = new VBox(18);
@@ -269,7 +271,11 @@ public final class UI {
         root.setRight(actionPanel);
 
         // ── Stage ──────────────────────────────────────────────────────────
-        Scene scene = new Scene(root, 1280, 780);
+        sceneRoot = new StackPane(root, animationLayer);
+        StackPane.setAlignment(animationLayer, Pos.TOP_LEFT);
+        animationLayer.prefWidthProperty().bind(sceneRoot.widthProperty());
+        animationLayer.prefHeightProperty().bind(sceneRoot.heightProperty());
+        Scene scene = new Scene(sceneRoot, 1280, 780);
         stage.setTitle("Cambio");
         stage.setScene(scene);
         stage.setResizable(false);
@@ -314,6 +320,7 @@ public final class UI {
         Player viewer = resolvePerspective(renderPlayers, state.getCurrentTurn());
         Map<Player, List<Optional<Card>>> currentHands = snapshotHands(renderPlayers);
         List<SwapEvent> swapEvents = detectSwaps(lastHands, currentHands);
+        List<SwapLineEvent> swapLineEvents = detectSwapLineEvents(lastHands, currentHands);
 
         CompletableFuture<Void> rendered = new CompletableFuture<>();
         Platform.runLater(() -> {
@@ -334,19 +341,21 @@ public final class UI {
             lastHands.clear();
             lastHands.putAll(currentHands);
 
-            Animation drawAnimation = playPendingDrawAnimation(slotMap, viewer);
-            Animation swapLineAnimation = playPendingSwapLineAnimation(slotMap);
-            Animation swapAnimation = playSwapAnimations(swapEvents, slotMap, viewer);
-            Animation swapCombo = combineParallelAnimations(swapLineAnimation, swapAnimation);
+            layoutNow();
 
-            if (drawAnimation == null && swapCombo == null) {
+            Animation swapLineAnimation = playPendingSwapLineAnimation(slotMap);
+            Animation handSwapLineAnimation = playSwapLineAnimations(swapLineEvents, slotMap);
+            Animation swapLinesCombined = combineParallelAnimations(swapLineAnimation, handSwapLineAnimation);
+            Animation swapAnimation = playSwapAnimations(swapEvents, slotMap, viewer);
+            Animation swapCombo = combineParallelAnimations(swapLinesCombined, swapAnimation);
+
+            if (swapCombo == null) {
                 rendered.complete(null);
                 return;
             }
 
-            Animation combined = combineAnimations(drawAnimation, swapCombo);
-            combined.setOnFinished(e -> rendered.complete(null));
-            combined.play();
+            swapCombo.setOnFinished(e -> rendered.complete(null));
+            swapCombo.play();
         });
         await(rendered);
     }
@@ -836,13 +845,36 @@ public final class UI {
         }
     }
 
-    private static final class PendingDraw {
+    private static final class CardPosition {
         private final Player player;
-        private final boolean fromDeck;
+        private final int index;
 
-        private PendingDraw(Player player, boolean fromDeck) {
+        private CardPosition(Player player, int index) {
             this.player = player;
-            this.fromDeck = fromDeck;
+            this.index = index;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof CardPosition other)) {
+                return false;
+            }
+            return this.player == other.player && this.index == other.index;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(System.identityHashCode(this.player), this.index);
+        }
+    }
+
+    private static final class SwapLineEvent {
+        private final CardPosition from;
+        private final CardPosition to;
+
+        private SwapLineEvent(CardPosition from, CardPosition to) {
+            this.from = from;
+            this.to = to;
         }
     }
 
@@ -865,10 +897,6 @@ public final class UI {
         if (move == null || move.commencedBy() == null) {
             return;
         }
-        if (move.commencedBy() instanceof Human) {
-            return;
-        }
-        this.pendingDraw = new PendingDraw(move.commencedBy(), move.drawFromDeck());
         if (move.swap()) {
             this.pendingSwap = new PendingSwap(move.commencedBy(), move.swapIndex(), move.drawFromDeck());
         }
@@ -935,6 +963,63 @@ public final class UI {
         return swaps;
     }
 
+    private List<SwapLineEvent> detectSwapLineEvents(Map<Player, List<Optional<Card>>> previous,
+                                                     Map<Player, List<Optional<Card>>> current) {
+        Map<Card, CardPosition> previousPositions = mapCardPositions(previous);
+        Map<Card, CardPosition> currentPositions = mapCardPositions(current);
+
+        Map<CardPosition, CardPosition> moves = new HashMap<>();
+        for (Map.Entry<Card, CardPosition> entry : previousPositions.entrySet()) {
+            CardPosition currentPos = currentPositions.get(entry.getKey());
+            if (currentPos == null) {
+                continue;
+            }
+
+            CardPosition previousPos = entry.getValue();
+            if (!previousPos.equals(currentPos)) {
+                moves.put(previousPos, currentPos);
+            }
+        }
+
+        List<SwapLineEvent> swapLines = new ArrayList<>();
+        Set<CardPosition> used = new HashSet<>();
+        for (Map.Entry<CardPosition, CardPosition> entry : moves.entrySet()) {
+            CardPosition from = entry.getKey();
+            CardPosition to = entry.getValue();
+            if (used.contains(from) || used.contains(to)) {
+                continue;
+            }
+
+            CardPosition reciprocal = moves.get(to);
+            if (reciprocal != null && reciprocal.equals(from)) {
+                swapLines.add(new SwapLineEvent(from, to));
+                used.add(from);
+                used.add(to);
+            }
+        }
+
+        return swapLines;
+    }
+
+    private Map<Card, CardPosition> mapCardPositions(Map<Player, List<Optional<Card>>> snapshot) {
+        Map<Card, CardPosition> positions = new HashMap<>();
+        for (Map.Entry<Player, List<Optional<Card>>> entry : snapshot.entrySet()) {
+            Player player = entry.getKey();
+            List<Optional<Card>> cards = entry.getValue();
+            if (cards == null) {
+                continue;
+            }
+
+            for (int i = 0; i < cards.size(); i++) {
+                Optional<Card> card = cards.get(i);
+                if (card != null && card.isPresent()) {
+                    positions.put(card.get(), new CardPosition(player, i));
+                }
+            }
+        }
+        return positions;
+    }
+
     private Animation playSwapAnimations(List<SwapEvent> swapEvents,
                                          Map<Player, List<StackPane>> slotMap,
                                          Player viewer) {
@@ -961,21 +1046,44 @@ public final class UI {
         return group;
     }
 
-    private Animation playPendingDrawAnimation(Map<Player, List<StackPane>> slotMap, Player viewer) {
-        if (pendingDraw == null) {
+    private Animation playSwapLineAnimations(List<SwapLineEvent> swapLineEvents,
+                                             Map<Player, List<StackPane>> slotMap) {
+        if (swapLineEvents == null || swapLineEvents.isEmpty()) {
             return null;
         }
 
-        PendingDraw draw = pendingDraw;
-        pendingDraw = null;
+        List<Animation> animations = new ArrayList<>();
+        for (SwapLineEvent event : swapLineEvents) {
+            StackPane from = resolveSlot(slotMap, event.from);
+            StackPane to = resolveSlot(slotMap, event.to);
+            if (from == null || to == null) {
+                continue;
+            }
 
-        StackPane source = draw.fromDeck ? drawPileCardNode : discardPileCardNode;
-        Node target = resolveDrawTarget(draw.player, slotMap, viewer);
-        if (source == null || target == null) {
+            Animation line = buildMoveLineAnimation(from, to);
+            if (line != null) {
+                animations.add(line);
+            }
+        }
+
+        if (animations.isEmpty()) {
             return null;
         }
 
-        return buildMoveLineAnimation(source, target);
+        ParallelTransition group = new ParallelTransition();
+        group.getChildren().addAll(animations);
+        return group;
+    }
+
+    private StackPane resolveSlot(Map<Player, List<StackPane>> slotMap, CardPosition position) {
+        if (slotMap == null || position == null) {
+            return null;
+        }
+        List<StackPane> slots = slotMap.get(position.player);
+        if (slots == null || position.index < 0 || position.index >= slots.size()) {
+            return null;
+        }
+        return slots.get(position.index);
     }
 
     private Animation playPendingSwapLineAnimation(Map<Player, List<StackPane>> slotMap) {
@@ -992,9 +1100,7 @@ public final class UI {
             return null;
         }
 
-        Animation incoming = buildMoveLineAnimation(source, slots.get(swap.index));
-        Animation outgoing = buildMoveLineAnimation(slots.get(swap.index), discardPileCardNode);
-        return combineParallelAnimations(incoming, outgoing);
+        return buildMoveLineAnimation(source, slots.get(swap.index));
     }
 
     private Animation combineAnimations(Animation first, Animation second) {
@@ -1017,17 +1123,6 @@ public final class UI {
         return new ParallelTransition(first, second);
     }
 
-    private Node resolveDrawTarget(Player player, Map<Player, List<StackPane>> slotMap, Player viewer) {
-        if (player == viewer && drawnCardSlot != null) {
-            return drawnCardSlot;
-        }
-        List<StackPane> slots = slotMap.get(player);
-        if (slots == null || slots.isEmpty()) {
-            return null;
-        }
-        return slots.get(0);
-    }
-
     private Animation buildMoveLineAnimation(Node source, Node target) {
         if (animationLayer == null || source == null || target == null) {
             return null;
@@ -1048,21 +1143,64 @@ public final class UI {
         line.setOpacity(0.0);
         line.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
 
-        animationLayer.getChildren().add(line);
+        Polygon startArrow = buildArrowHead(sourcePoint, targetPoint);
+        Polygon endArrow = buildArrowHead(targetPoint, sourcePoint);
 
-        FadeTransition fadeIn = new FadeTransition(LINE_FADE_IN_TIME, line);
-        fadeIn.setFromValue(0.0);
-        fadeIn.setToValue(1.0);
+        animationLayer.getChildren().addAll(line, startArrow, endArrow);
 
+        FadeTransition fadeInLine = new FadeTransition(LINE_FADE_IN_TIME, line);
+        fadeInLine.setFromValue(0.0);
+        fadeInLine.setToValue(1.0);
+
+        FadeTransition fadeInStart = new FadeTransition(LINE_FADE_IN_TIME, startArrow);
+        fadeInStart.setFromValue(0.0);
+        fadeInStart.setToValue(1.0);
+
+        FadeTransition fadeInEnd = new FadeTransition(LINE_FADE_IN_TIME, endArrow);
+        fadeInEnd.setFromValue(0.0);
+        fadeInEnd.setToValue(1.0);
+
+        ParallelTransition fadeIn = new ParallelTransition(fadeInLine, fadeInStart, fadeInEnd);
         PauseTransition hold = new PauseTransition(LINE_HOLD_TIME);
 
-        FadeTransition fadeOut = new FadeTransition(LINE_FADE_OUT_TIME, line);
-        fadeOut.setFromValue(1.0);
-        fadeOut.setToValue(0.0);
+        FadeTransition fadeOutLine = new FadeTransition(LINE_FADE_OUT_TIME, line);
+        fadeOutLine.setFromValue(1.0);
+        fadeOutLine.setToValue(0.0);
 
+        FadeTransition fadeOutStart = new FadeTransition(LINE_FADE_OUT_TIME, startArrow);
+        fadeOutStart.setFromValue(1.0);
+        fadeOutStart.setToValue(0.0);
+
+        FadeTransition fadeOutEnd = new FadeTransition(LINE_FADE_OUT_TIME, endArrow);
+        fadeOutEnd.setFromValue(1.0);
+        fadeOutEnd.setToValue(0.0);
+
+        ParallelTransition fadeOut = new ParallelTransition(fadeOutLine, fadeOutStart, fadeOutEnd);
         SequentialTransition seq = new SequentialTransition(fadeIn, hold, fadeOut);
-        seq.setOnFinished(e -> animationLayer.getChildren().remove(line));
+        seq.setOnFinished(e -> animationLayer.getChildren().removeAll(line, startArrow, endArrow));
         return seq;
+    }
+
+    private Polygon buildArrowHead(Point2D tip, Point2D from) {
+        double angle = Math.atan2(tip.getY() - from.getY(), tip.getX() - from.getX());
+        double sin = Math.sin(angle);
+        double cos = Math.cos(angle);
+
+        double backX = tip.getX() - ARROW_HEAD_LENGTH * cos;
+        double backY = tip.getY() - ARROW_HEAD_LENGTH * sin;
+        double leftX = backX + (ARROW_HEAD_WIDTH / 2.0) * sin;
+        double leftY = backY - (ARROW_HEAD_WIDTH / 2.0) * cos;
+        double rightX = backX - (ARROW_HEAD_WIDTH / 2.0) * sin;
+        double rightY = backY + (ARROW_HEAD_WIDTH / 2.0) * cos;
+
+        Polygon arrow = new Polygon(
+                tip.getX(), tip.getY(),
+                leftX, leftY,
+                rightX, rightY
+        );
+        arrow.setFill(Color.web(SWAP_GLOW));
+        arrow.setOpacity(0.0);
+        return arrow;
     }
 
     private Point2D nodeCenterInLayer(Node node) {
@@ -1078,6 +1216,18 @@ public final class UI {
     private void clearAnimationLayer() {
         if (animationLayer != null) {
             animationLayer.getChildren().clear();
+        }
+    }
+
+    private void layoutNow() {
+        if (sceneRoot != null) {
+            sceneRoot.applyCss();
+            sceneRoot.layout();
+            return;
+        }
+        if (root != null) {
+            root.applyCss();
+            root.layout();
         }
     }
 
