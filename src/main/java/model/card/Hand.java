@@ -32,10 +32,6 @@ public final class Hand {
         this.cards.set(index, Optional.of(newCard));
     }
 
-    public void setCards(List<Optional<Card>> cards) {
-        Collections.copy(this.cards, cards);
-    }
-
     public Hand newHandWithSwapAt(int index, Card newCard) {
         Hand newHand = new Hand(new ArrayList<>(this.cards));
         newHand.setCardAt(index, newCard);
@@ -47,6 +43,18 @@ public final class Hand {
                 .filter(Optional::isPresent)
                 .mapToInt(c -> c.get().getValue())
                 .sum();
+    }
+
+    public int size() {
+        long size = this.cards.stream()
+                .filter(Optional::isPresent)
+                .count();
+        if (size > 4) {
+
+            //should never have a hand greater than 4 cards large
+            throw new IllegalStateException("Hand larger than 4 detected");
+        }
+        else return (int) size;
     }
 
     @Override
