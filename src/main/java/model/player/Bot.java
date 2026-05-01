@@ -21,6 +21,20 @@ public class Bot extends Player {
     private static final int CAMBIO_THRESHOLD = 5;
 
     private static final List<Card> FULL_DECK = new ArrayList<>();
+    static {
+
+        //we need to create our deck
+        for (Rank r : Rank.values()) {
+            if (r != Rank.JOKER) {
+                for (Suit s : Suit.values()) {
+                    FULL_DECK.add(new Card(r, s));
+                }
+            }
+        }
+        FULL_DECK.add(new Card(Rank.JOKER, Suit.SPADES));
+        FULL_DECK.add(new Card(Rank.JOKER, Suit.HEARTS));
+    }
+
     private final Set<Information> knowledge = new HashSet<>();
 
     /* there are three targeting moves:
@@ -36,17 +50,6 @@ public class Bot extends Player {
 
     public Bot(String name, Hand startingHand) {
         super(name, startingHand);
-
-        //we need to create our deck
-        for (Rank r : Rank.values()) {
-            if (r != Rank.JOKER) {
-                for (Suit s : Suit.values()) {
-                    FULL_DECK.add(new Card(r, s));
-                }
-            }
-        }
-        FULL_DECK.add(new Card(Rank.JOKER, Suit.SPADES));
-        FULL_DECK.add(new Card(Rank.JOKER, Suit.HEARTS));
     }
 
 
