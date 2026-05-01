@@ -22,7 +22,7 @@ public class Main {
         ui.setPlayers(engine.getPlayers());
         ui.displayState(engine.getState());
 
-        //the game starts by showing each player their first two cards
+        //the game starts by showing each player their edge two cards
         doPeekPhase();
 
         //game loop
