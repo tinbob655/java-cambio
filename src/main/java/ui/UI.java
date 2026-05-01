@@ -18,6 +18,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.InnerShadow;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Polygon;
@@ -281,6 +282,8 @@ public final class UI {
         stage.setScene(scene);
         stage.setResizable(false);
         stage.show();
+        Image icon = new Image(Objects.requireNonNull(getClass().getResourceAsStream("/logo.png")));
+        stage.getIcons().add(icon);
     }
 
     // ══════════════════════════════════════════════════════════════════════
