@@ -1,8 +1,13 @@
 import engine.GameEngine;
+import model.card.Card;
 import model.card.Deck;
 import model.player.Bot;
 import model.player.Human;
+import model.player.Information;
+import model.player.Player;
 import ui.UI;
+
+import java.util.List;
 
 public class Main {
 
@@ -18,6 +23,7 @@ public class Main {
         ui.displayState(engine.getState());
 
         //the game starts by showing each player their first two cards
+        doPeekPhase();
 
         //game loop
         while (!GameEngine.getInstance().getState().isGameOver()) {
@@ -42,6 +48,22 @@ public class Main {
         //add bots
         for (int i = 0; i < BOT_COUNT; i++) {
             engine.addPlayer(new Bot("Bot " + i, deck.makeHand()));
+        }
+    }
+
+    private static void doPeekPhase() {
+
+        GameEngine engine = GameEngine.getInstance();
+        List<Player> players = engine.getPlayers();
+        int[] peekIndexes = {0, 3};
+        for (Player p : players) {
+            for (int index : peekIndexes) {
+
+                Card c = p.getHand().getCardAt(index).orElseThrow();
+                Information inf = new Information(p, c, index);
+
+                p.giveInformation(inf);
+            }
         }
     }
 }
