@@ -29,7 +29,6 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.util.Pair;
 import model.card.Card;
-import model.card.Discard;
 import model.card.Hand;
 import model.card.Rank;
 import model.card.Suit;
@@ -86,6 +85,7 @@ public final class UI {
 
     private static UI instance;
     private static final CountDownLatch START_LATCH = new CountDownLatch(1);
+    private final CountDownLatch CLOSE_LATCH = new CountDownLatch(1);
 
     private Stage     stage;
     private BorderPane root;
@@ -282,8 +282,18 @@ public final class UI {
         stage.setScene(scene);
         stage.setResizable(false);
         stage.show();
+        stage.setOnCloseRequest(e -> CLOSE_LATCH.countDown());
         Image icon = new Image(Objects.requireNonNull(getClass().getResourceAsStream("/logo.png")));
         stage.getIcons().add(icon);
+    }
+
+    //method for when the user closes the window
+    public void waitUntilClosed() {
+        try {
+            CLOSE_LATCH.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════

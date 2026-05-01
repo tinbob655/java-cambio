@@ -31,6 +31,8 @@ public class Main {
 
         //after cambio is called and each other player gets another turn, the game is over
         doGameOver();
+
+        ui.waitUntilClosed();
     }
 
     private static void buildEngine() {
