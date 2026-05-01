@@ -180,7 +180,7 @@ public class Bot extends Player {
         if (currentExpectedHandValue <= CAMBIO_THRESHOLD) {
 
             //CAMBIO!
-            return new Move(this, this.getHand(), false, false, -1);
+            return new Move(this, this.getHand(), false, false, -1, true);
         }
 
         //rev up monte-carlo

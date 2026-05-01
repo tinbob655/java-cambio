@@ -23,8 +23,8 @@ public class Human extends Player {
         UI ui = UI.getInstance();
         Optional<Move> mv = ui.promptMove(state);
 
-        //if we didn't get a move then return a move which does nothing
-        return mv.orElseGet(() -> new Move(this, this.getHand(), false, false, -1));
+        //not getting a move means calling cambio
+        return mv.orElseGet(() -> new Move(this, this.getHand(), false, false, -1, true));
     }
 
     @Override

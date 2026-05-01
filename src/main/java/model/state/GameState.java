@@ -51,7 +51,7 @@ public class GameState {
             Card drawnCard = drawn.get();
 
             //we might choose to discard the card
-            res.add(new Move(currentTurn, currentHand, drawFromDeck, false, -1));
+            res.add(new Move(currentTurn, currentHand, drawFromDeck, false, -1, false));
 
             //we might choose swap the card. We can swap with any card in our hand
             Hand oldHand = this.currentTurn.getHand();
@@ -62,7 +62,7 @@ public class GameState {
 
                     //a card exists here which means we can swap it
                     Hand newHand = oldHand.newHandWithSwapAt(finalI, drawnCard);
-                    res.add(new Move(currentTurn, newHand, drawFromDeck, true, finalI));
+                    res.add(new Move(currentTurn, newHand, drawFromDeck, true, finalI, false));
                 });
             }
         }

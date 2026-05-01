@@ -25,17 +25,12 @@ public class Main {
         //the game starts by showing each player their edge two cards
         doPeekPhase();
 
-        //game loop
-        while (!GameEngine.getInstance().getState().isGameOver()) {
+        //peek phase is followed by main gameplay
+        doGameLoop();
 
-            //do a turn
-            engine.turn();
 
-            ui.queueDrawAnimation(engine.getLastMove(), engine.getLastDrawnCard());
-
-            //update UI
-            ui.displayState(engine.getState());
-        }
+        //after cambio is called and each other player gets another turn, the game is over
+        doGameOver();
     }
 
     private static void buildEngine() {
@@ -65,5 +60,31 @@ public class Main {
                 p.giveInformation(inf);
             }
         }
+    }
+
+    private static void doGameLoop() {
+
+        GameEngine engine = GameEngine.getInstance();
+        UI ui = UI.getInstance();
+
+        while (!engine.getState().isGameOver()) {
+
+            //do a turn
+            engine.turn();
+
+            ui.queueDrawAnimation(engine.getLastMove(), engine.getLastDrawnCard());
+
+            //update UI
+            ui.displayState(engine.getState());
+        }
+    }
+
+    private static void doGameOver() {
+
+        GameEngine engine = GameEngine.getInstance();
+        UI ui = UI.getInstance();
+
+        Player winner = engine.getWinner().orElseThrow();
+        ui.displayEndGame(engine.getPlayers(), winner);
     }
 }

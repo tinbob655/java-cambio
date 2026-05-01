@@ -13,10 +13,8 @@ import model.player.Player;
 import model.state.GameState;
 import model.state.Move;
 import ui.UI;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+
+import java.util.*;
 
 //SINGLETON
 public final class GameEngine {
@@ -24,14 +22,14 @@ public final class GameEngine {
     private static GameEngine instance;
     private final List<Player> players = new ArrayList<>();
     private int turnIndex;
-    private Player cambiocalledBy;
+    private Player cambioCalledBy;
     private GameState state;
     private Move lastMove;
     private Optional<Card> lastDrawnCard = Optional.empty();
 
     private GameEngine() {
         this.turnIndex = 0;
-        this.cambiocalledBy = null;
+        this.cambioCalledBy = null;
         this.state = null;
     };
 
@@ -66,10 +64,10 @@ public final class GameEngine {
         Player currentTurn = this.players.get(this.turnIndex);
 
         int turnsTillGameOver;
-        if (this.cambiocalledBy != null) {
+        if (this.cambioCalledBy != null) {
 
             //someone has called cambio, need to work out how many turns until it is their turn again
-            int callerIndex = this.players.indexOf(this.cambiocalledBy);
+            int callerIndex = this.players.indexOf(this.cambioCalledBy);
             int playerCount = this.players.size();
             turnsTillGameOver = (callerIndex - this.turnIndex + playerCount) % playerCount;
         }
@@ -95,6 +93,50 @@ public final class GameEngine {
         return this.lastDrawnCard;
     }
 
+    public Optional<Player> getWinner() {
+
+        //only can have a winner if the state says game over
+        if (!this.getState().isGameOver()) {
+            return Optional.empty();
+        }
+
+        //game is confirmed over, find the player with the best hand
+        TreeMap<Integer, List<Player>> playerScores = new TreeMap<>();
+        for (Player p : this.players) {
+            int score = p.getHand().value();
+            playerScores.computeIfAbsent(score, k -> new ArrayList<>()).add(p);
+        }
+        List<Player> winners = playerScores.firstEntry().getValue();
+        switch (winners.size()) {
+            case 0 -> {
+                return Optional.empty();
+            }
+            case 1 -> {
+                return Optional.of(winners.get(0));
+            }
+            default -> {
+
+                //we have a tiebreaker situation
+                //a player who called cambio cannot win a tiebreaker
+                winners.removeIf(p -> p.equals(this.cambioCalledBy));
+
+                //the player with the largest hand size wins the tiebreaker
+                int maxHandSize = winners.stream()
+                        .mapToInt(p -> p.getHand().size())
+                        .max()
+                        .orElseThrow();
+
+                winners.removeIf(p -> p.getHand().size() != maxHandSize);
+
+                //hopefully we now have a definite winner
+                if (winners.size() > 1) {
+                    System.out.println("Could not resolve tiebreaker...");
+                }
+                return Optional.of(winners.get(0));
+            }
+        }
+    }
+
     public void turn() {
 
         //get the move we want to perform
@@ -116,6 +158,12 @@ public final class GameEngine {
 
         //need to decode and execute a move
         Player owner = mv.commencedBy();
+
+        //the player may have called cambio
+        if (mv.cambioCalled()) {
+            this.cambioCalledBy = owner;
+            return this.recomputeState();
+        }
 
         //do drawing from deck / discard
         Card drawnCard = mv.drawFromDeck() ? Deck.getInstance().poll().orElseThrow() : Discard.getInstance().poll().orElseThrow();
@@ -167,7 +215,7 @@ public final class GameEngine {
             case JACK -> {
 
                 //a jack lets us swap any two cards
-                if (!shouldPerformOptionalSwap(currentTurn, Rank.JACK)) {
+                if (shouldPerformOptionalSwap(currentTurn, Rank.JACK)) {
                     return;
                 }
 
@@ -202,7 +250,7 @@ public final class GameEngine {
 
                 //a queen lets us look at any card and then optionally do a swap
                 this.showCard(currentTurn, TargetType.ANY);
-                if (!shouldPerformOptionalSwap(currentTurn, Rank.QUEEN)) {
+                if (shouldPerformOptionalSwap(currentTurn, Rank.QUEEN)) {
                     return;
                 }
 
@@ -240,12 +288,12 @@ public final class GameEngine {
             String message = (rank == Rank.JACK)
                     ? "Use the Jack to swap two cards?"
                     : "Use the Queen to swap two cards?";
-            return UI.getInstance().promptConfirm(message);
+            return !UI.getInstance().promptConfirm(message);
         }
         if (currentTurn instanceof Bot bot) {
-            return bot.wantsToSwap();
+            return !bot.wantsToSwap();
         }
-        return true;
+        return false;
     }
 
     private void swapTwoCards(Player player1, int index1, Player player2, int index2) {
@@ -288,4 +336,5 @@ public final class GameEngine {
         Card showCard = target.getKey().getHand().getCardAt(target.getValue()).orElseThrow();
         currentTurn.giveInformation(new Information(target.getKey(), showCard, target.getValue()));
     }
+
 }
