@@ -45,8 +45,16 @@ public class Main {
         engine.addPlayer(new Human("You", deck.makeHand()));
 
         //add bots
+        String[] blokeNames = {
+                "Gary", "Dave", "Steve", "Alan", "Colin",
+                "Graham", "Keith", "Brian", "Terry", "Barry",
+                "Nigel", "Phil", "John", "Mark", "Trevor",
+                "Paul", "Kevin", "Ray", "Mick", "Tony",
+                "Ian", "Bob", "Martin", "Geoff", "Pete",
+                "Roy", "Derek", "Clive", "Gordon", "Arthur"
+        };
         for (int i = 0; i < BOT_COUNT; i++) {
-            engine.addPlayer(new Bot("Bot " + i, deck.makeHand()));
+            engine.addPlayer(new Bot(blokeNames[i], deck.makeHand()));
         }
     }
 
