@@ -32,7 +32,7 @@ public class Human extends Player {
     public void giveInformation(Information inf) {
 
         //show the user this card
-        UI.getInstance().peekAtCard(inf.owner(), inf.index(), this);
+        UI.getInstance().peekAtCard(inf.owner(), inf.index());
     }
 
     @Override

@@ -511,23 +511,26 @@ public final class UI {
      * Blocks until the player clicks "Hide".
      * Used at game start when players peek at their two bottom cards.
      */
-    public void peekAtCard(Player player, int index, Player viewer) {
+    public void peekAtCard(Player player, int index) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             messageLabel.setText(
                     "  ›  " + player.getName() + " — peeking at position " + index);
-            if (player.equals(viewer)) {
-                updateHand(player.getHand(), index);
+
+            if (player == perspectivePlayer) {
+                updateHand(player.getHand(), index);       // reveal in the human's own row
+            } else {
+                renderOpponentsWithReveal(player, index);  // reveal in the correct bot's box
             }
-            else {
-                Map<Player, List<StackPane>> slotMap = new IdentityHashMap<>();
-                renderOpponents(players, viewer, slotMap);
-                updateHand(viewer.getHand(), -1, viewer, slotMap);
-            }
+
             buttonRow.getChildren().clear();
             buttonRow.getChildren().add(
                     goldButton("Hide", () -> {
-                        updateHand(player.getHand(), -1);
+                        if (player == perspectivePlayer) {
+                            updateHand(player.getHand(), -1);
+                        } else {
+                            renderOpponentsWithReveal(null, -1); // flip everything back down
+                        }
                         buttonRow.getChildren().clear();
                         future.complete(null);
                     })
@@ -746,7 +749,7 @@ public final class UI {
             if (p == viewer) {
                 continue;
             }
-            opponentsRow.getChildren().add(buildOpponentBox(p, slotMap));
+            opponentsRow.getChildren().add(buildOpponentBox(p, slotMap, -1));
             hasOpponents = true;
         }
 
@@ -754,7 +757,7 @@ public final class UI {
         opponentsRow.setManaged(hasOpponents);
     }
 
-    private VBox buildOpponentBox(Player opponent, Map<Player, List<StackPane>> slotMap) {
+    private VBox buildOpponentBox(Player opponent, Map<Player, List<StackPane>> slotMap, int revealIndex) {
         VBox box = new VBox(6);
         box.setAlignment(Pos.CENTER);
         box.setPadding(new Insets(8, 12, 8, 12));
@@ -770,11 +773,21 @@ public final class UI {
 
         HBox cards = new HBox(10);
         cards.setAlignment(Pos.CENTER);
-        List<StackPane> slots = renderHandRow(cards, null, opponent.getHand(), -1, false);
+        List<StackPane> slots = renderHandRow(cards, null, opponent.getHand(), revealIndex, false);
         slotMap.put(opponent, slots);
 
         box.getChildren().addAll(name, cards);
         return box;
+    }
+
+    private void renderOpponentsWithReveal(Player revealPlayer, int revealIndex) {
+        opponentsRow.getChildren().clear();
+        Player viewer = perspectivePlayer != null ? perspectivePlayer : players.get(0);
+        for (Player p : players) {
+            if (p == viewer) continue;
+            int idx = (p == revealPlayer) ? revealIndex : -1;
+            opponentsRow.getChildren().add(buildOpponentBox(p, new IdentityHashMap<>(), idx));
+        }
     }
 
     private VBox buildPileBox(String title, StackPane cardNode) {

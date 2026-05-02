@@ -139,7 +139,7 @@ public final class GameEngine {
 
     public void turn() {
 
-        //TODO: FLIP OTHER PLAYER'S CARD WHEN PEEKING AT THEIR HAND
+        //TODO: BOTS AREN'T PLAYING WHEN HUMAN GETS A SPECIAL CARD
 
         //get the move we want to perform
         Player currentPlayer = this.players.get(this.turnIndex);
