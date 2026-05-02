@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class Human extends Player {
+public final class Human extends Player {
 
     public Human(String name, Hand startingHand) {
         super(name, startingHand);

@@ -8,7 +8,7 @@ import model.player.Player;
 
 import java.util.*;
 
-public class GameState {
+public final class GameState {
 
     private final Deck drawPile;
     private final Discard discardPile;

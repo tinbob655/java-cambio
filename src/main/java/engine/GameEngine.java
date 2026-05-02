@@ -157,6 +157,11 @@ public final class GameEngine implements EngineAPI {
         this.lastDrawnCard = drawnCard;
         this.turnIndex = (this.turnIndex + 1) % this.players.size();
         this.state = this.advance(mv);
+
+        //if cambio was called make it clear
+        if (mv.cambioCalled()) {
+            UIHandler.displayMessage(currentPlayer.getName() + " has called CAMBIO!");
+        }
     }
 
     private GameState advance(Move mv) {
