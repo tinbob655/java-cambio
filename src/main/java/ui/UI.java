@@ -446,6 +446,10 @@ public final class UI {
     public boolean promptConfirm(String question) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Platform.runLater(() -> {
+            buttonRow.getChildren().addAll(
+                    goldButton("Yes", () -> { buttonRow.getChildren().clear(); future.complete(true);  }),
+                    redButton ("No",  () -> { buttonRow.getChildren().clear(); future.complete(false); })
+            );
             messageLabel.setText("  ›  " + question);
             buttonRow.getChildren().clear();
             buttonRow.getChildren().addAll(
@@ -487,17 +491,39 @@ public final class UI {
         return await(future);
     }
 
+    //blocks the game until the human is done with their turn
+    public void waitForAcknowledgement() {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Platform.runLater(() -> {
+            buttonRow.getChildren().clear();
+            buttonRow.getChildren().add(
+                    goldButton("Continue  →", () -> {
+                        buttonRow.getChildren().clear();
+                        future.complete(null);
+                    })
+            );
+        });
+        await(future);
+    }
+
     /**
      * Reveals only the card at {@code index} — all other positions stay face-down.
      * Blocks until the player clicks "Hide".
      * Used at game start when players peek at their two bottom cards.
      */
-    public void peekAtCard(Player player, int index) {
+    public void peekAtCard(Player player, int index, Player viewer) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             messageLabel.setText(
                     "  ›  " + player.getName() + " — peeking at position " + index);
-            updateHand(player.getHand(), index);   // only slot `index` revealed
+            if (player.equals(viewer)) {
+                updateHand(player.getHand(), index);
+            }
+            else {
+                Map<Player, List<StackPane>> slotMap = new IdentityHashMap<>();
+                renderOpponents(players, viewer, slotMap);
+                updateHand(viewer.getHand(), -1, viewer, slotMap);
+            }
             buttonRow.getChildren().clear();
             buttonRow.getChildren().add(
                     goldButton("Hide", () -> {

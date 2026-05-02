@@ -139,8 +139,6 @@ public final class GameEngine {
 
     public void turn() {
 
-        //TODO: CLEAN UP ALL THE 'ISNTANCEOF' STUFF
-        //TODO: NO OTHER PLAY SHOULD BE ABLE TO DO ANYTHING WHILE A HUMAN IS PLAYING
         //TODO: FLIP OTHER PLAYER'S CARD WHEN PEEKING AT THEIR HAND
 
         //get the move we want to perform

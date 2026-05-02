@@ -71,13 +71,19 @@ public class Main {
 
         while (!engine.getState().isGameOver()) {
 
+            Player currentTurn = engine.getState().getCurrentTurn();
+
             //do a turn
             engine.turn();
 
-            ui.queueDrawAnimation(engine.getLastMove(), engine.getLastDrawnCard());
-
             //update UI
+            ui.queueDrawAnimation(engine.getLastMove(), engine.getLastDrawnCard());
             ui.displayState(engine.getState());
+
+            //bots cannot do anything while a human is playing
+            if (currentTurn instanceof Human) {
+                ui.waitForAcknowledgement();
+            }
         }
     }
 
