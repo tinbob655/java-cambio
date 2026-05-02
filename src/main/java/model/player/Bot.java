@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 public class Bot extends Player {
 
     //this is how many times we will simulate game states
-    private static final int TOTAL_MONTE_CARLO_ITERATIONS = 10000;
+    private static final int TOTAL_MONTE_CARLO_ITERATIONS = 100000;
 
     //how many moves we look ahead
     private static final int LOOKAHEAD_DEPTH = 3;
