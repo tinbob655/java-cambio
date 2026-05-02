@@ -341,7 +341,16 @@ public final class UI implements UI_API {
         CompletableFuture<Void> rendered = new CompletableFuture<>();
         Platform.runLater(() -> {
             clearAnimationLayer();
-            turnLabel.setText(state.getCurrentTurn().getName() + "'s turn");
+            StringBuilder turnName = new StringBuilder();
+            if (state.getCurrentTurn().getName().equals("You")) {
+                turnName.append("Your");
+            }
+            else {
+                turnName.append(state.getCurrentTurn().getName());
+                turnName.append(" 's");
+            }
+            turnName.append(" turn");
+            turnLabel.setText(turnName.toString());
             updateThinkingLabel(state.getCurrentTurn());
             updatePiles(state);
             updateDrawnCard(Optional.empty());
