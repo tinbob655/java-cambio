@@ -79,7 +79,11 @@ public final class GameEngine implements EngineAPI {
 
     @Override
     public void addPlayer(Player p) {
-        this.players.add(p);
+
+        //maximum 5 players
+        if (this.getPlayers().size() < 5) {
+            this.players.add(p);
+        }
     }
 
     @Override
