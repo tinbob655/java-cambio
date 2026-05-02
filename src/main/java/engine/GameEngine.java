@@ -10,13 +10,15 @@ import model.player.Information;
 import model.player.Player;
 import model.state.GameState;
 import model.state.Move;
+import ui.UIProxy;
 
 import java.util.*;
 
 //SINGLETON
-public final class GameEngine {
+public final class GameEngine implements EngineAPI {
 
     private static GameEngine instance;
+    private static final UIProxy UIHandler = new UIProxy();
     private final List<Player> players = new ArrayList<>();
     private int turnIndex;
     private Player cambioCalledBy;
@@ -74,22 +76,27 @@ public final class GameEngine {
         return new GameState(deck, discard, currentTurn, turnsTillGameOver);
     }
 
+    @Override
     public void addPlayer(Player p) {
         this.players.add(p);
     }
 
+    @Override
     public List<Player> getPlayers() {
         return Collections.unmodifiableList(this.players);
     }
 
+    @Override
     public Move getLastMove() {
         return this.lastMove;
     }
 
+    @Override
     public Optional<Card> getLastDrawnCard() {
         return this.lastDrawnCard;
     }
 
+    @Override
     public Optional<Player> getWinner() {
 
         //only can have a winner if the state says game over
@@ -134,6 +141,7 @@ public final class GameEngine {
         }
     }
 
+    @Override
     public void turn() {
 
         //get the move we want to perform
