@@ -16,7 +16,10 @@ import java.util.stream.Collectors;
 public class Bot extends Player {
 
     //this is how many times we will simulate game states
-    private static final int TOTAL_MONTE_CARLO_ITERATIONS = 100000;
+    private static final int TOTAL_MONTE_CARLO_ITERATIONS = 10000;
+
+    //how many moves we look ahead
+    private static final int LOOKAHEAD_DEPTH = 3;
 
     //we call cambio if we think our hand is <= this number
     private static final int CAMBIO_THRESHOLD = 8;
@@ -300,13 +303,35 @@ public class Bot extends Player {
             }
         }
 
+        //look ahead
+        double futureUtility = 0;
+        for (int depth = 1; depth < LOOKAHEAD_DEPTH; depth++) {
+            if (simDeck.isEmpty()) break;
+            Card nextDrawn = simDeck.remove(0);
+            double bestValDiff = 0;
+
+            for (int i = 0; i < 4; i++) {
+                double currentVal = mySimHand[i].getValue();
+                double nextVal = nextDrawn.getValue();
+
+                if (nextVal < currentVal) {
+                    double diff = currentVal - nextVal;
+                    if (diff > bestValDiff) {
+                        bestValDiff = diff;
+                        mySimHand[i] = nextDrawn;
+                    }
+                }
+            }
+            futureUtility += bestValDiff;
+        }
+
         double finalHandValue = 0;
         for(Card c : mySimHand) {
             finalHandValue += c.getValue();
         }
 
-        //reward a low own hand score
-        return -finalHandValue + utilityScore;
+        // We are trying to minimize hand value, so a lower hand value gives a higher score
+        return -finalHandValue + utilityScore + futureUtility;
     }
 
     //represents a single node in the game tree
