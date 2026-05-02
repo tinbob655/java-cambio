@@ -68,13 +68,14 @@ public class Bot extends Player {
 
 
     //returns true if we can swap a worse card for a better one
-    public boolean wantsToSwap() {
+    @Override
+    public boolean wantsToSwap(Rank rank) {
 
-        Pair<Player, Integer> myWorst = getHighestValuedCard(this);
+        Pair<Player, Integer> myWorst  = getHighestValuedCard(this);
         Pair<Player, Integer> theirBest = getLowestValuedCard(getOpponents());
 
         if (myWorst != null && theirBest != null) {
-            double myWorstVal = getExpectedValue(myWorst.getKey(), myWorst.getValue());
+            double myWorstVal   = getExpectedValue(myWorst.getKey(),   myWorst.getValue());
             double theirBestVal = getExpectedValue(theirBest.getKey(), theirBest.getValue());
             return myWorstVal > theirBestVal;
         }
@@ -257,7 +258,7 @@ public class Bot extends Player {
 
                 //deal with swapping
                 case JACK, QUEEN -> {
-                    if (wantsToSwap()) {
+                    if (wantsToSwap(r)) {
 
                         Pair<Player, Integer> myWorst = getHighestValuedCard(this);
                         Pair<Player, Integer> theirBest = getLowestValuedCard(getOpponents());

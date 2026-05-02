@@ -3,6 +3,7 @@ package model.player;
 import engine.GameEngine;
 import javafx.util.Pair;
 import model.card.Hand;
+import model.card.Rank;
 import model.state.GameState;
 import model.state.Move;
 import ui.UI;
@@ -61,5 +62,11 @@ public class Human extends Player {
             return null;
         }
         return ui.promptCardTarget("Choose any player to target", candidates, false);
+    }
+
+    @Override
+    public boolean wantsToSwap(Rank rank) {
+        String message = rank == Rank.JACK ? "Use the Jack to swap two cards?" : "Use the Queen to swap two cards?";
+        return UI.getInstance().promptConfirm(message);
     }
 }

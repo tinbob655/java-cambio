@@ -139,6 +139,10 @@ public final class GameEngine {
 
     public void turn() {
 
+        //TODO: CLEAN UP ALL THE 'ISNTANCEOF' STUFF
+        //TODO: NO OTHER PLAY SHOULD BE ABLE TO DO ANYTHING WHILE A HUMAN IS PLAYING
+        //TODO: FLIP OTHER PLAYER'S CARD WHEN PEEKING AT THEIR HAND
+
         //get the move we want to perform
         Player currentPlayer = this.players.get(this.turnIndex);
         Move mv = currentPlayer.turn(this.getState());
@@ -215,85 +219,44 @@ public final class GameEngine {
             case JACK -> {
 
                 //a jack lets us swap any two cards
-                if (shouldPerformOptionalSwap(currentTurn, Rank.JACK)) {
-                    return;
-                }
-
-                if (currentTurn instanceof Bot bot) {
-                    bot.beginSwapTargeting();
-                }
-
-                Pair<Player, Integer> target1;
-                Pair<Player, Integer> target2;
-                try {
-                    target1 = currentTurn.anyPlayerCardTarget();
-                    if (target1 == null) {
-                        return;
-                    }
-                    target2 = currentTurn.anyPlayerCardTarget();
-                    if (target2 == null) {
-                        return;
-                    }
-                } finally {
-                    if (currentTurn instanceof Bot bot) {
-                        bot.endTargeting();
-                    }
-                }
-
-                this.swapTwoCards(target1.getKey(), target1.getValue(), target2.getKey(), target2.getValue());
-                if (currentTurn instanceof Bot bot) {
-                    bot.recordSwap(target1, target2);
-                }
+                doSwap(rank, currentTurn);
             }
 
             case QUEEN -> {
 
                 //a queen lets us look at any card and then optionally do a swap
                 this.showCard(currentTurn, TargetType.ANY);
-                if (shouldPerformOptionalSwap(currentTurn, Rank.QUEEN)) {
-                    return;
-                }
-
-                if (currentTurn instanceof Bot bot) {
-                    bot.beginSwapTargeting();
-                }
-
-                Pair<Player, Integer> target1;
-                Pair<Player, Integer> target2;
-                try {
-                    target1 = currentTurn.anyPlayerCardTarget();
-                    if (target1 == null) {
-                        return;
-                    }
-                    target2 = currentTurn.anyPlayerCardTarget();
-                    if (target2 == null) {
-                        return;
-                    }
-                } finally {
-                    if (currentTurn instanceof Bot bot) {
-                        bot.endTargeting();
-                    }
-                }
-
-                this.swapTwoCards(target1.getKey(), target1.getValue(), target2.getKey(), target2.getValue());
-                if (currentTurn instanceof Bot bot) {
-                    bot.recordSwap(target1, target2);
-                }
+                doSwap(rank, currentTurn);
             }
         }
     }
 
-    private boolean shouldPerformOptionalSwap(Player currentTurn, Rank rank) {
-        if (currentTurn instanceof Human) {
-            String message = (rank == Rank.JACK)
-                    ? "Use the Jack to swap two cards?"
-                    : "Use the Queen to swap two cards?";
-            return !UI.getInstance().promptConfirm(message);
+    private void doSwap(Rank rank, Player currentTurn) {
+
+        if (!currentTurn.wantsToSwap(rank)) {
+            return;
         }
-        if (currentTurn instanceof Bot bot) {
-            return !bot.wantsToSwap();
+
+        currentTurn.beginSwapTargeting();
+
+        Pair<Player, Integer> target1;
+        Pair<Player, Integer> target2;
+        try {
+            target1 = currentTurn.anyPlayerCardTarget();
+            if (target1 == null) {
+                return;
+            }
+            target2 = currentTurn.anyPlayerCardTarget();
+            if (target2 == null) {
+                return;
+            }
         }
-        return false;
+        finally {
+            currentTurn.endTargeting();
+        }
+
+        this.swapTwoCards(target1.getKey(), target1.getValue(), target2.getKey(), target2.getValue());
+        currentTurn.recordSwap(target1, target2);
     }
 
     private void swapTwoCards(Player player1, int index1, Player player2, int index2) {
@@ -308,9 +271,7 @@ public final class GameEngine {
 
     private void showCard(Player currentTurn, TargetType type) {
 
-        if (currentTurn instanceof Bot bot) {
-            bot.beginPeekTargeting();
-        }
+        currentTurn.beginPeekTargeting();
 
         //get our target information
         Pair<Player, Integer> target;
@@ -321,10 +282,9 @@ public final class GameEngine {
                 case ANY -> target = currentTurn.anyPlayerCardTarget();
                 default -> throw new IllegalArgumentException("TargetType must be SELF, OTHER or ANY");
             }
-        } finally {
-            if (currentTurn instanceof Bot bot) {
-                bot.endTargeting();
-            }
+        }
+        finally {
+            currentTurn.endTargeting();
         }
 
         //the player may decline our offer

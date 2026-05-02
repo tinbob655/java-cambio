@@ -2,6 +2,7 @@ package model.player;
 
 import javafx.util.Pair;
 import model.card.Hand;
+import model.card.Rank;
 import model.state.GameState;
 import model.state.Move;
 
@@ -29,6 +30,13 @@ public abstract class Player {
     public abstract Pair<Player, Integer> otherPlayerCardTarget();
     public abstract Pair<Player, Integer> selfCardTarget();
     public abstract Pair<Player, Integer> anyPlayerCardTarget();
+    public abstract boolean wantsToSwap(Rank rank);
+
+    //no-ops for the bot
+    public void beginPeekTargeting() {}
+    public void beginSwapTargeting() {}
+    public void endTargeting() {}
+    public void recordSwap(Pair<Player, Integer> t1, Pair<Player, Integer> t2) {}
 
     @Override
     public boolean equals(Object o) {
