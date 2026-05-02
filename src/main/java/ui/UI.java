@@ -21,6 +21,7 @@ import javafx.scene.effect.InnerShadow;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Line;
 import javafx.scene.shape.Polygon;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
@@ -98,7 +99,6 @@ public final class UI {
     private Label     messageLabel;
     private Label     turnLabel;
     private Label     thinkingLabel;
-    private Label     drawnCardLabel;
     private StackPane drawnCardSlot;
     private StackPane drawPileCardNode;
     private StackPane discardPileCardNode;
@@ -228,7 +228,7 @@ public final class UI {
         drawnCardRow.setVisible(false);
         drawnCardRow.setManaged(false);
 
-        drawnCardLabel = new Label("Drawn card");
+        Label drawnCardLabel = new Label("Drawn card");
         drawnCardLabel.setFont(FONT_SMALL);
         drawnCardLabel.setTextFill(Color.web(TEXT_DIM));
         drawnCardSlot = buildCardNode(Optional.empty(), true);
@@ -304,7 +304,7 @@ public final class UI {
      * Registers the full player list so the UI can render opponents and
      * animate swaps for any player.
      */
-    public void setPlayers(List<Player> players) {
+    void setPlayers(List<Player> players) {
         if (players == null || players.isEmpty()) {
             return;
         }
@@ -325,11 +325,11 @@ public final class UI {
       *   - updates both piles
       *   - renders opponents face-down and your hand as hidden slots
       *   - clears buttons and the message label
-     *
+
      * Blocks until the FX thread finishes rendering so the game loop never
      * races ahead of what the player can see.
      */
-    public void displayState(GameState state) {
+    void displayState(GameState state) {
         List<Player> renderPlayers = resolvePlayers(state);
         Player viewer = resolvePerspective(renderPlayers, state.getCurrentTurn());
         Map<Player, List<Optional<Card>>> currentHands = snapshotHands(renderPlayers);
@@ -379,19 +379,19 @@ public final class UI {
       * e.g. "Alice drew ♠K" or "Draw pile reshuffled."
      * Non-blocking — fire and forget.
      */
-    public void displayMessage(String message) {
+    void displayMessage(String message) {
         Platform.runLater(() -> messageLabel.setText("  ›  " + message));
     }
 
     /**
      * Two-step turn prompt. Blocks the game thread while the player decides.
-     *
+
       * Step 1 — "Draw from Deck", "Draw from Discard [♠K]", "Call Cambio!"
       * Step 2 — "Discard drawn card", "Swap into slot [0]", "Swap into slot [1]", …
-     *
+
      * Returns Optional.empty() if the player calls Cambio.
      */
-    public Optional<Move> promptMove(GameState state) {
+    Optional<Move> promptMove(GameState state) {
 
         Set<Move> legal = state.legalMoves();
         boolean deckAvailable    = legal.stream().anyMatch(Move::drawFromDeck);
@@ -443,7 +443,7 @@ public final class UI {
      * Shows a question with gold "Yes" and red "No" buttons.
      * Blocks until one is clicked.
      */
-    public boolean promptConfirm(String question) {
+    boolean promptConfirm(String question) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             buttonRow.getChildren().addAll(
@@ -464,7 +464,7 @@ public final class UI {
     /**
      * Prompts the user to pick a player and then a card index.
      */
-    public Pair<Player, Integer> promptCardTarget(String prompt,
+    Pair<Player, Integer> promptCardTarget(String prompt,
                                                   List<Player> candidates,
                                                   boolean allowCancel) {
         if (candidates == null || candidates.isEmpty()) {
@@ -485,14 +485,14 @@ public final class UI {
     /**
      * Prompts the user to pick a hand slot index (0-3).
      */
-    public Integer promptCardIndex(String prompt, boolean allowCancel) {
+    Integer promptCardIndex(String prompt, boolean allowCancel) {
         CompletableFuture<Integer> future = new CompletableFuture<>();
         Platform.runLater(() -> showIndexChoiceButtons(prompt, allowCancel, future));
         return await(future);
     }
 
     //blocks the game until the human is done with their turn
-    public void waitForAcknowledgement() {
+    void waitForAcknowledgement() {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             buttonRow.getChildren().clear();
@@ -511,7 +511,7 @@ public final class UI {
      * Blocks until the player clicks "Hide".
      * Used at game start when players peek at their two bottom cards.
      */
-    public void peekAtCard(Player player, int index) {
+    void peekAtCard(Player player, int index) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             messageLabel.setText(
@@ -543,7 +543,7 @@ public final class UI {
      * Replaces the centre of the board with a final results screen:
      * each player's full hand and score, with the winner highlighted in gold.
      */
-    public void displayEndGame(List<Player> players, Player winner) {
+    void displayEndGame(List<Player> players, Player winner) {
         CompletableFuture<Void> rendered = new CompletableFuture<>();
         Platform.runLater(() -> {
 
@@ -625,12 +625,12 @@ public final class UI {
     private void showActionButtons(List<Move> candidates, CompletableFuture<Move> future) {
         buttonRow.getChildren().clear();
 
-        for (Move m : candidates) {
-            String label = !m.swap()
+        for (Move captured : candidates) {
+            String label = !captured.swap()
                     ? "Discard drawn card"
-                    : "Swap into slot [" + m.swapIndex() + "]";
+                    : "Swap into slot [" + captured.swapIndex() + "]";
 
-            Move captured = m;   // effectively final for the lambda
+            // effectively final for the lambda
             buttonRow.getChildren().add(
                     goldButton(label, () -> {
                         buttonRow.getChildren().clear();
@@ -713,7 +713,7 @@ public final class UI {
         if (history.size() >= 2) {
             next = Optional.of(history.get(history.size() - 2));
         }
-        renderCardNode(discardPileCardNode, next, !next.isPresent());
+        renderCardNode(discardPileCardNode, next, next.isEmpty());
     }
 
     private void updateDrawnCard(Optional<Card> card, boolean revealFace) {
@@ -805,15 +805,14 @@ public final class UI {
     /**
      * Renders the player's four-card hand.
      *
-     * @param revealIndex  Which position to show face-up. Pass -1 for all face-down.
+     * @param revealIndex Which position to show face-up. Pass -1 for all face-down.
      */
-    private List<StackPane> updateHand(Hand hand, int revealIndex,
-                                       Player owner, Map<Player, List<StackPane>> slotMap) {
+    private void updateHand(Hand hand, int revealIndex,
+                            Player owner, Map<Player, List<StackPane>> slotMap) {
         List<StackPane> slots = renderHandRow(handRow, "Your hand", hand, revealIndex, true);
         if (owner != null && slotMap != null) {
             slotMap.put(owner, slots);
         }
-        return slots;
     }
 
     private void updateHand(Hand hand, int revealIndex) {
@@ -855,7 +854,6 @@ public final class UI {
 
     /**
      * Builds one playing-card node.
-     *
      * Face-up : white rounded rect, rank top-left, large suit centred, red/black.
      * Face-down: navy blue with a ◆ back pattern.
      * Empty slot: same navy back (an Optional.empty() with faceDown=true shows as back).
@@ -967,59 +965,29 @@ public final class UI {
 
     private enum DrawChoice { DECK, DISCARD, CAMBIO }
 
-    private static final class SwapEvent {
-        private final Player player;
-        private final int index;
-
-        private SwapEvent(Player player, int index) {
-            this.player = player;
-            this.index = index;
-        }
+    private record SwapEvent(Player player, int index) {
     }
 
-    private static final class CardPosition {
-        private final Player player;
-        private final int index;
-
-        private CardPosition(Player player, int index) {
-            this.player = player;
-            this.index = index;
-        }
+    private record CardPosition(Player player, int index) {
 
         @Override
-        public boolean equals(Object o) {
-            if (!(o instanceof CardPosition other)) {
-                return false;
+            public boolean equals(Object o) {
+                if (!(o instanceof CardPosition other)) {
+                    return false;
+                }
+                return this.player == other.player && this.index == other.index;
             }
-            return this.player == other.player && this.index == other.index;
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(System.identityHashCode(this.player), this.index);
+            }
         }
 
-        @Override
-        public int hashCode() {
-            return Objects.hash(System.identityHashCode(this.player), this.index);
-        }
+    private record SwapLineEvent(CardPosition from, CardPosition to) {
     }
 
-    private static final class SwapLineEvent {
-        private final CardPosition from;
-        private final CardPosition to;
-
-        private SwapLineEvent(CardPosition from, CardPosition to) {
-            this.from = from;
-            this.to = to;
-        }
-    }
-
-    private static final class PendingSwap {
-        private final Player player;
-        private final int index;
-        private final boolean fromDeck;
-
-        private PendingSwap(Player player, int index, boolean fromDeck) {
-            this.player = player;
-            this.index = index;
-            this.fromDeck = fromDeck;
-        }
+    private record PendingSwap(Player player, int index, boolean fromDeck) {
     }
 
     /**
@@ -1235,16 +1203,6 @@ public final class UI {
         return buildMoveLineAnimation(source, slots.get(swap.index));
     }
 
-    private Animation combineAnimations(Animation first, Animation second) {
-        if (first == null) {
-            return second;
-        }
-        if (second == null) {
-            return first;
-        }
-        return new SequentialTransition(first, second);
-    }
-
     private Animation combineParallelAnimations(Animation first, Animation second) {
         if (first == null) {
             return second;
@@ -1280,6 +1238,10 @@ public final class UI {
 
         animationLayer.getChildren().addAll(line, startArrow, endArrow);
 
+        return getSequentialTransition(line, startArrow, endArrow);
+    }
+
+    private SequentialTransition getSequentialTransition(Line line, Polygon startArrow, Polygon endArrow) {
         FadeTransition fadeInLine = new FadeTransition(LINE_FADE_IN_TIME, line);
         fadeInLine.setFromValue(0.0);
         fadeInLine.setToValue(1.0);
@@ -1390,6 +1352,10 @@ public final class UI {
 
         slot.getChildren().addAll(glow, tag);
 
+        return getTransition(slot, glow, tag);
+    }
+
+    private static SequentialTransition getTransition(StackPane slot, Region glow, Label tag) {
         ScaleTransition pop = new ScaleTransition(SWAP_POP_TIME, slot);
         pop.setFromX(0.92);
         pop.setFromY(0.92);
@@ -1425,7 +1391,6 @@ public final class UI {
         sequence.setOnFinished(e -> {
             slot.getChildren().removeAll(glow, tag);
         });
-
         return sequence;
     }
 

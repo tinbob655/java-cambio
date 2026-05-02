@@ -6,13 +6,10 @@ import model.card.Card;
 import model.card.Deck;
 import model.card.Discard;
 import model.card.Rank;
-import model.player.Bot;
 import model.player.Information;
-import model.player.Human;
 import model.player.Player;
 import model.state.GameState;
 import model.state.Move;
-import ui.UI;
 
 import java.util.*;
 
@@ -138,8 +135,6 @@ public final class GameEngine {
     }
 
     public void turn() {
-
-        //TODO: BOTS AREN'T PLAYING WHEN HUMAN GETS A SPECIAL CARD
 
         //get the move we want to perform
         Player currentPlayer = this.players.get(this.turnIndex);
