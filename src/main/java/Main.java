@@ -9,6 +9,7 @@ import ui.UI;
 import ui.UIProxy;
 
 import java.util.List;
+import java.util.Random;
 
 public final class Main {
 
@@ -53,8 +54,10 @@ public final class Main {
                 "Ian", "Bob", "Martin", "Geoff", "Pete",
                 "Roy", "Derek", "Clive", "Gordon", "Arthur"
         };
+        Random rand = new Random();
         for (int i = 0; i < BOT_COUNT; i++) {
-            engine.addPlayer(new Bot(blokeNames[i], deck.makeHand()));
+            String name = blokeNames[rand.nextInt(blokeNames.length)];
+            engine.addPlayer(new Bot(name, deck.makeHand()));
         }
     }
 
