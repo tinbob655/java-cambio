@@ -5,7 +5,12 @@ import java.util.Objects;
 public record Card(Rank rank, Suit suit) {
 
     public int getValue() {
-        return this.rank.getValue();
+
+        //red king is worth -1
+        if ((this.rank == Rank.KING) && ((this.suit == Suit.HEARTS) || (this.suit == Suit.DIAMONDS))) {
+            return -1;
+        }
+        else return this.rank.getValue();
     }
 
     @Override
