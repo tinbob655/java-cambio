@@ -28,6 +28,11 @@ public final class UIProxy implements UI_API {
     }
 
     @Override
+    public void displayBigMessage(String message) {
+        ui.displayBigMessage(message);
+    }
+
+    @Override
     public Optional<Move> promptMove(GameState state) {
         return ui.promptMove(state);
     }

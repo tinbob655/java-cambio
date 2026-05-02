@@ -44,7 +44,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 // SINGLETON
-public final class UI {
+public final class UI implements UI_API {
 
     // ══════════════════════════════════════════════════════════════════════
     //  COLOURS & FONTS  (single source of truth — change here, not inline)
@@ -304,7 +304,8 @@ public final class UI {
      * Registers the full player list so the UI can render opponents and
      * animate swaps for any player.
      */
-    void setPlayers(List<Player> players) {
+    @Override
+    public void setPlayers(List<Player> players) {
         if (players == null || players.isEmpty()) {
             return;
         }
@@ -329,7 +330,8 @@ public final class UI {
      * Blocks until the FX thread finishes rendering so the game loop never
      * races ahead of what the player can see.
      */
-    void displayState(GameState state) {
+    @Override
+    public void displayState(GameState state) {
         List<Player> renderPlayers = resolvePlayers(state);
         Player viewer = resolvePerspective(renderPlayers, state.getCurrentTurn());
         Map<Player, List<Optional<Card>>> currentHands = snapshotHands(renderPlayers);
@@ -379,8 +381,37 @@ public final class UI {
       * e.g. "Alice drew ♠K" or "Draw pile reshuffled."
      * Non-blocking — fire and forget.
      */
-    void displayMessage(String message) {
+    @Override
+    public void displayMessage(String message) {
         Platform.runLater(() -> messageLabel.setText("  ›  " + message));
+    }
+
+    @Override
+    public void displayBigMessage(String message) {
+        Platform.runLater(() -> {
+            Label bigLabel = new Label(message);
+            bigLabel.setFont(Font.font("Georgia", FontWeight.BOLD, 40));
+            bigLabel.setTextFill(Color.web(GOLD));
+
+            // Align to top left and translate by (x, y) coordinates
+            StackPane.setAlignment(bigLabel, Pos.TOP_LEFT);
+            bigLabel.setTranslateX(50);
+            bigLabel.setTranslateY(120);
+
+            // Add drop shadow for readability
+            DropShadow dropShadow = new DropShadow(15, Color.BLACK);
+            bigLabel.setEffect(dropShadow);
+
+            // Add to the persistent sceneRoot instead of the animation layer
+            sceneRoot.getChildren().add(bigLabel);
+
+            // Animate fade out and removal
+            FadeTransition fadeOut = new FadeTransition(Duration.seconds(3.5), bigLabel);
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+            fadeOut.setOnFinished(e -> sceneRoot.getChildren().remove(bigLabel));
+            fadeOut.play();
+        });
     }
 
     /**
@@ -391,7 +422,8 @@ public final class UI {
 
      * Returns Optional.empty() if the player calls Cambio.
      */
-    Optional<Move> promptMove(GameState state) {
+    @Override
+    public Optional<Move> promptMove(GameState state) {
 
         Set<Move> legal = state.legalMoves();
         boolean deckAvailable    = legal.stream().anyMatch(Move::drawFromDeck);
@@ -443,7 +475,8 @@ public final class UI {
      * Shows a question with gold "Yes" and red "No" buttons.
      * Blocks until one is clicked.
      */
-    boolean promptConfirm(String question) {
+    @Override
+    public boolean promptConfirm(String question) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             buttonRow.getChildren().addAll(
@@ -464,7 +497,8 @@ public final class UI {
     /**
      * Prompts the user to pick a player and then a card index.
      */
-    Pair<Player, Integer> promptCardTarget(String prompt,
+    @Override
+    public Pair<Player, Integer> promptCardTarget(String prompt,
                                                   List<Player> candidates,
                                                   boolean allowCancel) {
         if (candidates == null || candidates.isEmpty()) {
@@ -485,14 +519,16 @@ public final class UI {
     /**
      * Prompts the user to pick a hand slot index (0-3).
      */
-    Integer promptCardIndex(String prompt, boolean allowCancel) {
+    @Override
+    public Integer promptCardIndex(String prompt, boolean allowCancel) {
         CompletableFuture<Integer> future = new CompletableFuture<>();
         Platform.runLater(() -> showIndexChoiceButtons(prompt, allowCancel, future));
         return await(future);
     }
 
     //blocks the game until the human is done with their turn
-    void waitForAcknowledgement() {
+    @Override
+    public void waitForAcknowledgement() {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             buttonRow.getChildren().clear();
@@ -511,7 +547,8 @@ public final class UI {
      * Blocks until the player clicks "Hide".
      * Used at game start when players peek at their two bottom cards.
      */
-    void peekAtCard(Player player, int index) {
+    @Override
+    public void peekAtCard(Player player, int index) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Platform.runLater(() -> {
             messageLabel.setText(
@@ -543,7 +580,8 @@ public final class UI {
      * Replaces the centre of the board with a final results screen:
      * each player's full hand and score, with the winner highlighted in gold.
      */
-    void displayEndGame(List<Player> players, Player winner) {
+    @Override
+    public void displayEndGame(List<Player> players, Player winner) {
         CompletableFuture<Void> rendered = new CompletableFuture<>();
         Platform.runLater(() -> {
 

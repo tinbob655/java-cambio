@@ -6,6 +6,7 @@ import model.card.Card;
 import model.card.Deck;
 import model.card.Discard;
 import model.card.Rank;
+import model.player.Human;
 import model.player.Information;
 import model.player.Player;
 import model.state.GameState;
@@ -160,7 +161,16 @@ public final class GameEngine implements EngineAPI {
 
         //if cambio was called make it clear
         if (mv.cambioCalled()) {
-            UIHandler.displayMessage(currentPlayer.getName() + " has called CAMBIO!");
+            StringBuilder message = new StringBuilder();
+            if (currentPlayer instanceof Human) {
+                message.append("You have");
+            }
+            else {
+                message.append(currentPlayer.getName());
+                message.append(" has");
+            }
+            message.append(" called CAMBIO!");
+            UIHandler.displayBigMessage(message.toString());
         }
     }
 
