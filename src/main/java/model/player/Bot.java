@@ -19,7 +19,7 @@ public class Bot extends Player {
     private static final int TOTAL_MONTE_CARLO_ITERATIONS = 100000;
 
     //we call cambio if we think our hand is <= this number
-    private static final int CAMBIO_THRESHOLD = 5;
+    private static final int CAMBIO_THRESHOLD = 8;
 
     //bounds for monte-carlo search
     private static final double MAX_POSSIBLE_SCORE = 50.0;
