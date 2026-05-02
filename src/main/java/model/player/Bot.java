@@ -201,8 +201,7 @@ public class Bot extends Player {
                 return localResults;
             });
         }
-
-        ConcurrentHashMap<Move, Integer> totalVisits = new ConcurrentHashMap<>();
+        ConcurrentHashMap<Move, double[]> totalStats = new ConcurrentHashMap<>();
 
         //do the futures
         try {
@@ -210,7 +209,12 @@ public class Bot extends Player {
             for (Future<Map<Move, double[]>> future : futures) {
                 Map<Move, double[]> result = future.get();
                 for (Map.Entry<Move, double[]> entry : result.entrySet()) {
-                    totalVisits.merge(entry.getKey(), (int) entry.getValue()[0], Integer::sum);
+                    // merge [visits, scoreSum] arrays by summing each element
+                    totalStats.merge(entry.getKey(), entry.getValue(),
+                            (existing, incoming) -> new double[]{
+                                    existing[0] + incoming[0],
+                                    existing[1] + incoming[1]
+                            });
                 }
             }
         }
@@ -222,14 +226,15 @@ public class Bot extends Player {
             executor.shutdown();
         }
 
-        //get the best move
         Move bestMove = null;
-        int maxVisits = -1;
+        double bestAvgScore = -Double.MAX_VALUE;
 
         for (Move mv : legalMoves) {
-            int visits = totalVisits.getOrDefault(mv, 0);
-            if (visits > maxVisits) {
-                maxVisits = visits;
+            double[] stats = totalStats.getOrDefault(mv, new double[]{0, 0});
+            if (stats[0] == 0) continue;
+            double avgScore = stats[1] / stats[0];
+            if (avgScore > bestAvgScore) {
+                bestAvgScore = avgScore;
                 bestMove = mv;
             }
         }
@@ -274,9 +279,18 @@ public class Bot extends Player {
 
         Card drawnCard;
         if (mv.drawFromDeck()) {
-            if (simDeck.isEmpty()) return MIN_POSSIBLE_SCORE;
-            drawnCard = simDeck.remove(0);
-        } else {
+            if (mv.swap() && mv.finalHand() != null && mv.swapIndex() >= 0 && mv.swapIndex() < 4) {
+                drawnCard = mv.finalHand().getCardAt(mv.swapIndex())
+                        .orElseGet(() -> simDeck.isEmpty()
+                                ? new Card(Rank.TWO, Suit.HEARTS)
+                                : simDeck.remove(0));
+            }
+            else {
+                if (simDeck.isEmpty()) return MIN_POSSIBLE_SCORE;
+                drawnCard = simDeck.remove(0);
+            }
+        }
+        else {
             drawnCard = state.getDiscardPile().peek().orElse(null);
             if (drawnCard == null) return MIN_POSSIBLE_SCORE;
         }
