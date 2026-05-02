@@ -10,7 +10,7 @@ import ui.UIProxy;
 
 import java.util.List;
 
-public class Main {
+public final class Main {
 
     private static final int BOT_COUNT = 2;
     private static final UIProxy UIHandler = new UIProxy();
