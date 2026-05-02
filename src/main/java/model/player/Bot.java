@@ -10,15 +10,20 @@ import model.state.GameState;
 import model.state.Move;
 
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public class Bot extends Player {
 
-    //how many monte-carlo simulations we do per turn
-    private static final int MONTE_CARLO_ITERATIONS = 1000;
+    //this is how many times we will simulate game states
+    private static final int TOTAL_MONTE_CARLO_ITERATIONS = 100000;
 
     //we call cambio if we think our hand is <= this number
     private static final int CAMBIO_THRESHOLD = 5;
+
+    //bounds for monte-carlo search
+    private static final double MAX_POSSIBLE_SCORE = 50.0;
+    private static final double MIN_POSSIBLE_SCORE = -50.0;
 
     private static final List<Card> FULL_DECK = new ArrayList<>();
     static {
@@ -70,7 +75,6 @@ public class Bot extends Player {
     //returns true if we can swap a worse card for a better one
     @Override
     public boolean wantsToSwap(Rank rank) {
-
         Pair<Player, Integer> myWorst  = getHighestValuedCard(this);
         Pair<Player, Integer> theirBest = getLowestValuedCard(getOpponents());
 
@@ -82,9 +86,8 @@ public class Bot extends Player {
         return false;
     }
 
-    //if we do a swap we need to update our knowledge
+    //if we see a swap we need to update our knowledge
     public void recordSwap(Pair<Player, Integer> t1, Pair<Player, Integer> t2) {
-
         Information inf1 = getKnowledgeAt(t1.getKey(), t1.getValue());
         Information inf2 = getKnowledgeAt(t2.getKey(), t2.getValue());
 
@@ -110,13 +113,9 @@ public class Bot extends Player {
     @Override
     public Pair<Player, Integer> selfCardTarget() {
         if (targetingMode == TargetingMode.SWAP) {
-
-            //always give away our highest card if we are trying to swap
             return getHighestValuedCard(this);
         }
         else {
-
-            //if we want information, find a card we don't know about yet
             Pair<Player, Integer> unk = getUnknownCard(this);
             return unk != null ? unk : getHighestValuedCard(this);
         }
@@ -125,13 +124,9 @@ public class Bot extends Player {
     @Override
     public Pair<Player, Integer> otherPlayerCardTarget() {
         if (targetingMode == TargetingMode.SWAP) {
-
-            //if we are swapping then always take the best possible card
             return getLowestValuedCard(getOpponents());
         }
         else {
-
-            //if we are trying to get information then get a card we don't know about
             Pair<Player, Integer> unk = getUnknownCard(getOpponents());
             return unk != null ? unk : getLowestValuedCard(getOpponents());
         }
@@ -140,9 +135,6 @@ public class Bot extends Player {
     @Override
     public Pair<Player, Integer> anyPlayerCardTarget() {
         if (targetingMode == TargetingMode.SWAP) {
-
-            //we are swapping
-            //alternate picking our bad card then an opponent's good card
             if (!swapFirstTargetPicked) {
                 swapFirstTargetPicked = true;
                 return getHighestValuedCard(this);
@@ -152,11 +144,7 @@ public class Bot extends Player {
                 return getLowestValuedCard(getOpponents());
             }
         }
-
-        //we are not swapping
         else {
-
-            //always try to find out about ourselves before other players
             Pair<Player, Integer> unkSelf = getUnknownCard(this);
             if (unkSelf != null) {
                 return unkSelf;
@@ -168,127 +156,161 @@ public class Bot extends Player {
 
     @Override
     public Move turn(GameState state) {
-
-        //turn uses a monte-carlo tree search
-
-        //setup
         updateKnowledgeFromDiscard(state);
         List<Card> unseen = getUnseenCards(state);
         lastUnseenAverage = unseen.isEmpty() ? 5.0 : unseen.stream().mapToInt(Card::getValue).average().orElse(5.0);
 
-        //we might want to call cambio
+        //if we are below the threshold then call cambio
         double currentExpectedHandValue = 0;
         for (int i = 0; i < 4; i++) {
             currentExpectedHandValue += getExpectedValue(this, i);
         }
         if (currentExpectedHandValue <= CAMBIO_THRESHOLD) {
-
-            //CAMBIO!
             return new Move(this, this.getHand(), false, false, -1, true);
         }
 
-        //rev up monte-carlo
         Set<Move> legalMoves = state.legalMoves();
-        MCTSNode root = new MCTSNode(null, null);
-        root.expand(legalMoves);
+        if (legalMoves.isEmpty()) return null;
 
-        //simulate many iterations and take average to get most likely next cards
-        for (int i = 0; i < MONTE_CARLO_ITERATIONS; i++) {
+        int numCores = Runtime.getRuntime().availableProcessors();
+        int iterationsPerThread = TOTAL_MONTE_CARLO_ITERATIONS / numCores;
 
-            MCTSNode selected = root.selectBestUCT();
-            List<Card> simDeck = new ArrayList<>(unseen);
-            Collections.shuffle(simDeck);
-            double simulatedScore = simulatePlayout(selected.move, simDeck, state);
-            selected.backpropagate(simulatedScore);
+        ExecutorService executor = Executors.newFixedThreadPool(numCores);
+        List<Callable<Map<Move, double[]>>> tasks = new ArrayList<>();
+
+        for (int t = 0; t < numCores; t++) {
+            tasks.add(() -> {
+                Map<Move, double[]> localResults = new HashMap<>();
+                MCTSNode localRoot = new MCTSNode(null, null);
+                localRoot.expand(legalMoves);
+
+                for (int i = 0; i < iterationsPerThread; i++) {
+                    List<Card> simDeck = getWeightedDeterminization(unseen);
+
+                    MCTSNode selected = localRoot.selectBestUCT();
+                    double simulatedScore = simulatePlayout(selected.move, simDeck, state);
+                    selected.backpropagate(simulatedScore);
+                }
+
+                for (MCTSNode child : localRoot.children) {
+                    localResults.put(child.move, new double[]{child.visits, child.scoreSum});
+                }
+                return localResults;
+            });
         }
 
-        //after simulation return the most likely best move
-        MCTSNode bestChild = null;
-        double bestAvg = -Double.MAX_VALUE;
-        for (MCTSNode child : root.children) {
-            double avg = child.visits > 0 ? child.scoreSum / child.visits : -Double.MAX_VALUE;
-            if (avg > bestAvg) {
-                bestAvg = avg;
-                bestChild = child;
+        ConcurrentHashMap<Move, Integer> totalVisits = new ConcurrentHashMap<>();
+
+        //do the futures
+        try {
+            List<Future<Map<Move, double[]>>> futures = executor.invokeAll(tasks);
+            for (Future<Map<Move, double[]>> future : futures) {
+                Map<Move, double[]> result = future.get();
+                for (Map.Entry<Move, double[]> entry : result.entrySet()) {
+                    totalVisits.merge(entry.getKey(), (int) entry.getValue()[0], Integer::sum);
+                }
             }
         }
-        return bestChild != null ? bestChild.move : legalMoves.iterator().next();
+        catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            e.printStackTrace();
+        }
+        finally {
+            executor.shutdown();
+        }
+
+        //get the best move
+        Move bestMove = null;
+        int maxVisits = -1;
+
+        for (Move mv : legalMoves) {
+            int visits = totalVisits.getOrDefault(mv, 0);
+            if (visits > maxVisits) {
+                maxVisits = visits;
+                bestMove = mv;
+            }
+        }
+
+        return bestMove != null ? bestMove : legalMoves.iterator().next();
     }
 
-    //pretends we are at a certain point in the game and plays
-    private double simulatePlayout(Move mv, List<Card> simDeck, GameState state) {
+    private List<Card> getWeightedDeterminization(List<Card> unseen) {
+        List<Card> simDeck = new ArrayList<>(unseen);
 
-        //get a simulated hand
+        class WeightedCard {
+            final Card card;
+            final int weight;
+
+            WeightedCard(Card card) {
+                this.card = card;
+                this.weight = card.getValue() + (int) (Math.random() * 6 - 3);
+            }
+        }
+
+        List<WeightedCard> weightedList = new ArrayList<>();
+        for (Card c : simDeck) {
+            weightedList.add(new WeightedCard(c));
+        }
+
+        weightedList.sort(Comparator.comparingInt(wc -> wc.weight));
+
+        List<Card> result = new ArrayList<>();
+        for (WeightedCard wc : weightedList) {
+            result.add(wc.card);
+        }
+
+        return result;
+    }
+
+    private double simulatePlayout(Move mv, List<Card> simDeck, GameState state) {
         Card[] mySimHand = new Card[4];
         for(int i = 0; i < 4; i++) {
             Information inf = getKnowledgeAt(this, i);
             mySimHand[i] = (inf != null) ? inf.card() : getRandomCard(simDeck);
         }
 
-        //pretend we are drawing from the deck / discard pile
         Card drawnCard;
         if (mv.drawFromDeck()) {
-            if (simDeck.isEmpty()) {
-                return -1000;
-            }
+            if (simDeck.isEmpty()) return MIN_POSSIBLE_SCORE;
             drawnCard = simDeck.remove(0);
-        }
-        else {
+        } else {
             drawnCard = state.getDiscardPile().peek().orElse(null);
-            if (drawnCard == null) {
-                return -1000;
-            }
+            if (drawnCard == null) return MIN_POSSIBLE_SCORE;
         }
 
-        //give our simulated state a score
         double utilityScore = 0;
         if (mv.swap() && mv.swapIndex() >= 0 && mv.swapIndex() < 4) {
             mySimHand[mv.swapIndex()] = drawnCard;
-        }
-        else {
+        } else {
             Rank r = drawnCard.rank();
-
             switch (r) {
-
-                //reward the bot for peeking
                 case SEVEN, EIGHT -> utilityScore += 2;
-
-                //reward the bot for self-peeking
                 case NINE, TEN -> utilityScore += 4;
-
-                //deal with swapping
                 case JACK, QUEEN -> {
                     if (wantsToSwap(r)) {
-
                         Pair<Player, Integer> myWorst = getHighestValuedCard(this);
                         Pair<Player, Integer> theirBest = getLowestValuedCard(getOpponents());
                         if (theirBest != null) {
-
-                            //work out if a swap would benefit us
                             double valDiff = getExpectedValue(myWorst.getKey(), myWorst.getValue())
                                     - getExpectedValue(theirBest.getKey(), theirBest.getValue());
-                            if (valDiff > 0) {
-                                utilityScore += valDiff;
-                            }
+                            if (valDiff > 0) utilityScore += valDiff;
                         }
                     }
                 }
             }
         }
 
-        //calculate a value for the simulated play
         double finalHandValue = 0;
         for(Card c : mySimHand) {
             finalHandValue += c.getValue();
         }
 
-        //NOTE: we are trying to minimise the value of our hand so give it a negative score
+        //reward a low own hand score
         return -finalHandValue + utilityScore;
     }
 
-    //class for a single node in the monte-carlo tree
+    //represents a single node in the game tree
     private static final class MCTSNode {
-
         Move move;
         MCTSNode parent;
         List<MCTSNode> children = new ArrayList<>();
@@ -300,26 +322,24 @@ public class Bot extends Player {
             this.parent = parent;
         }
 
-        //create the children of this node
         private void expand(Set<Move> legalMoves) {
             for (Move mv : legalMoves) {
                 children.add(new MCTSNode(mv, this));
             }
         }
 
-        //returns the best child from this node
         private MCTSNode selectBestUCT() {
             MCTSNode best = null;
             double bestValue = -Double.MAX_VALUE;
+
             for (MCTSNode child : children) {
+                if (child.visits == 0) return child;
 
-                //prioritize an unvisited node
-                if (child.visits == 0) {
-                    return child;
-                }
+                double avgScore = child.scoreSum / child.visits;
+                double normalizedScore = (avgScore - MIN_POSSIBLE_SCORE) / (MAX_POSSIBLE_SCORE - MIN_POSSIBLE_SCORE);
 
-                //give the child a score
-                double uct = (child.scoreSum / child.visits) + 10.0 * Math.sqrt(2 * Math.log(this.visits) / child.visits);
+                double uct = normalizedScore + Math.sqrt(2) * Math.sqrt(Math.log(this.visits) / child.visits);
+
                 if (uct > bestValue) {
                     bestValue = uct;
                     best = child;
