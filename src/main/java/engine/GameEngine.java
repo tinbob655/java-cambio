@@ -6,6 +6,7 @@ import model.card.Card;
 import model.card.Deck;
 import model.card.Discard;
 import model.card.Rank;
+import model.player.Bot;
 import model.player.Human;
 import model.player.Information;
 import model.player.Player;
@@ -21,6 +22,7 @@ public final class GameEngine implements EngineAPI {
     private static GameEngine instance;
     private static final UIProxy UIHandler = new UIProxy();
     private final List<Player> players = new ArrayList<>();
+    private final Object snapLock = new Object();
     private int turnIndex;
     private Player cambioCalledBy;
     private GameState state;
@@ -92,6 +94,42 @@ public final class GameEngine implements EngineAPI {
     }
 
     @Override
+    public boolean attemptHumanSnap(Player cardOwner, int cardIndex) {
+
+        //find our human player
+        Player human = this.players.stream()
+                .filter(p -> p instanceof Human)
+                .findFirst()
+                .orElse(null);
+        if (human == null) {
+            return false;
+        }
+
+        synchronized (snapLock) {
+
+            //snap cannot happen when there is no discard pile
+            Optional<Card> topOpt = Discard.getInstance().peek();
+            if (topOpt.isEmpty()) {
+                return false;
+            }
+            Card top = topOpt.get();
+
+            Optional<Card> targetCard = cardOwner.getHand().getCardAt(cardIndex);
+
+            //the human may choose not to snap || the snap may not be valid
+            if (targetCard.isEmpty() || !targetCard.get().rank().equals(top.rank())) {
+                return false;
+            }
+
+            executeSnap(human, cardOwner, cardIndex);
+        }
+
+        //update UI
+        UIHandler.displayState(this.getState());
+        return true;
+    }
+
+    @Override
     public Move getLastMove() {
         return this.lastMove;
     }
@@ -142,6 +180,82 @@ public final class GameEngine implements EngineAPI {
                     System.out.println("Could not resolve tiebreaker...");
                 }
                 return Optional.of(winners.get(0));
+            }
+        }
+    }
+
+    private void checkSnap() {
+
+        Optional<Card> topOpt = Discard.getInstance().peek();
+        if (topOpt.isEmpty()) {
+            return;
+        }
+        Card top = topOpt.get();
+        List<Player> shuffledPlayers = new ArrayList<>(List.copyOf(this.players));
+
+        //human snapping is handled by UI
+        shuffledPlayers.removeIf(p -> p instanceof Human);
+        Collections.shuffle(shuffledPlayers);
+
+        for (Player p : shuffledPlayers) {
+
+            if (!(p instanceof Bot bot)) {
+                continue;
+            }
+
+            //ask the bot if it wants to do a snap
+            Optional<Pair<Player, Integer>> choice = bot.chooseSnap(top);
+            if (choice.isEmpty()) {
+                continue;
+            }
+
+            //if the bot wants to do a snap then validate that this snap is actually possible
+            Player cardOwner = choice.get().getKey();
+            int cardIndex = choice.get().getValue();
+            Optional<Card> actual = cardOwner.getHand().getCardAt(cardIndex);
+            if (actual.isPresent() && actual.get().equals(top)) {
+
+                //the snap was possible, do it
+                executeSnap(bot, cardOwner, cardIndex);
+
+                //only one snap can happen per discard pile update
+                return;
+            }
+        }
+    }
+
+    private void executeSnap(Player snapper, Player cardOwner, int cardIndex) {
+
+        Card snappedCard = cardOwner.getHand().getCardAt(cardIndex).orElseThrow();
+
+        //discard the snapped card from the owner's hand
+        cardOwner.getHand().removeCardAt(cardIndex);
+        Discard.getInstance().add(snappedCard);
+
+        if (cardOwner == snapper) {
+
+            //a player is snapping their own card, just update the UI
+            UIHandler.displayMessage(snapper.getName() + " snapped their own " + snappedCard.rank() + "!");
+            snapper.recordSnap(snapper, cardIndex, null, -1, null, snapper);
+        }
+        else {
+
+            //a player is snapping a different player's card
+            UIHandler.displayMessage(snapper.getName() + " snapped " + cardOwner.getName() + "'s " + snappedCard.rank() + "!");
+
+            //get info on the card to give
+            int giveIndex = snapper.chooseCardToGive(cardOwner);
+            Card givenCard = snapper.getHand().getCardAt(giveIndex).orElseThrow();
+
+            //move that given card into the target player's hand
+            snapper.getHand().removeCardAt(giveIndex);
+            cardOwner.getHand().setCardAt(cardIndex, givenCard);
+
+            UIHandler.displayMessage(snapper.getName() + " gave " + cardOwner.getName() + " a card in return.");
+
+            //allow all bots to update their knowledge
+            for (Player p : this.players) {
+                p.recordSnap(cardOwner, cardIndex, givenCard, giveIndex, cardOwner, snapper);
             }
         }
     }
@@ -206,7 +320,10 @@ public final class GameEngine implements EngineAPI {
             //we want to swap the drawn card with the card in the swap index
             Card oldCard = owner.getHand().getCardAt(mv.swapIndex()).orElseThrow();
             owner.getHand().setCardAt(mv.swapIndex(), drawnCard);
-            Discard.getInstance().add(oldCard);
+            synchronized (snapLock) {
+                Discard.getInstance().add(oldCard);
+                checkSnap();
+            }
         }
         else {
 
@@ -214,7 +331,10 @@ public final class GameEngine implements EngineAPI {
             this.doSpecialCard(drawnCard.rank(), owner);
 
             //we are not swapping so just discard the card we picked up
-            Discard.getInstance().add(drawnCard);
+            synchronized (snapLock) {
+                Discard.getInstance().add(drawnCard);
+                checkSnap();
+            }
         }
 
         return this.recomputeState();

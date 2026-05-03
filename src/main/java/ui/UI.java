@@ -1,5 +1,6 @@
 package ui;
 
+import engine.GameEngine;
 import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
@@ -820,7 +821,7 @@ public final class UI implements UI_API {
 
         HBox cards = new HBox(10);
         cards.setAlignment(Pos.CENTER);
-        List<StackPane> slots = renderHandRow(cards, null, opponent.getHand(), revealIndex, false);
+        List<StackPane> slots = renderHandRow(cards, null, opponent.getHand(), revealIndex, false, opponent);
         slotMap.put(opponent, slots);
 
         box.getChildren().addAll(name, cards);
@@ -856,7 +857,7 @@ public final class UI implements UI_API {
      */
     private void updateHand(Hand hand, int revealIndex,
                             Player owner, Map<Player, List<StackPane>> slotMap) {
-        List<StackPane> slots = renderHandRow(handRow, "Your hand", hand, revealIndex, true);
+        List<StackPane> slots = renderHandRow(handRow, "Your hand", hand, revealIndex, true, owner);
         if (owner != null && slotMap != null) {
             slotMap.put(owner, slots);
         }
@@ -867,7 +868,7 @@ public final class UI implements UI_API {
     }
 
     private List<StackPane> renderHandRow(HBox targetRow, String labelText,
-                                          Hand hand, int revealIndex, boolean showIndices) {
+                                          Hand hand, int revealIndex, boolean showIndices, Player owner) {
         targetRow.getChildren().clear();
 
         if (labelText != null && !labelText.isBlank()) {
@@ -892,11 +893,26 @@ public final class UI implements UI_API {
 
             boolean faceDown = (i != revealIndex);
             StackPane cardNode = buildCardNode(hand.getCardAt(i), faceDown);
+            final int slotIndex = i;
+            final Player slotOwner = owner;
+            cardNode.setStyle(cardNode.getStyle() + "-fx-cursor: hand;");
+            cardNode.setOnMouseClicked(e -> handleSnapClick(slotOwner, slotIndex));
             slot.getChildren().add(cardNode);
             targetRow.getChildren().add(slot);
             slots.add(cardNode);
         }
         return slots;
+    }
+
+    private void handleSnapClick(Player cardOwner, int cardIndex) {
+        Thread t = new Thread(() -> {
+            boolean success = GameEngine.getInstance().attemptHumanSnap(cardOwner, cardIndex);
+            if (!success) {
+                Platform.runLater(() -> messageLabel.setText("  ›  Not a snap!"));
+            }
+        });
+        t.setDaemon(true);   // won't prevent JVM exit when the game closes
+        t.start();
     }
 
     /**

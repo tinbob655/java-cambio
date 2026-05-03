@@ -66,4 +66,9 @@ public final class Human extends Player {
         String message = rank == Rank.JACK ? "Use the Jack to swap two cards?" : "Use the Queen to swap two cards?";
         return this.UIHandler.promptConfirm(message);
     }
+
+    @Override
+    public int chooseCardToGive(Player recipient) {
+        return this.UIHandler.promptCardIndex("Choose a card to give to " + recipient.getName(), false);
+    }
 }

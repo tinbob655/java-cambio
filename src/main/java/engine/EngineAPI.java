@@ -17,4 +17,5 @@ public interface EngineAPI {
     Optional<Player> getWinner();
     void turn();
     List<Player> getPlayers();
+    boolean attemptHumanSnap(Player owner, int snapIndex);
 }

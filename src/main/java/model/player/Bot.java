@@ -242,6 +242,57 @@ public class Bot extends Player {
         return bestMove != null ? bestMove : legalMoves.iterator().next();
     }
 
+    @Override
+    public int chooseCardToGive(Player recipient) {
+
+        //choose our worst card
+        return this.getHighestValuedCard(this).getValue();
+    }
+
+    @Override
+    public void recordSnap(Player snappedOwner, int snappedIndex, Card givenCard, int givenIndex, Player recipient, Player snapper) {
+
+        //remove the snapped card from our knowledge
+        knowledge.removeIf(i -> i.owner().equals(snappedOwner) && i.index() == snappedIndex);
+
+        //if a card is to be given
+        if (givenCard != null && snapper != null && recipient != null) {
+
+            //try to get knowledge about that given card
+            Information knownGiven = getKnowledgeAt(snapper, givenIndex);
+            knowledge.removeIf(i -> i.owner().equals(snapper) && i.index() == givenIndex);
+
+            //update our knowledge to track the moved card
+            if (knownGiven != null && knownGiven.card().equals(givenCard)) {
+                knowledge.add(new Information(recipient, givenCard, snappedIndex));
+            }
+        }
+    }
+
+    public Optional<Pair<Player, Integer>> chooseSnap(Card discardTop) {
+
+        //prioritise snapping our own cards
+        Optional<Information> ownSnap = this.knowledge.stream()
+                .filter(inf -> inf.owner().equals(this))
+                .filter(inf -> inf.card().rank().equals(discardTop.rank()))
+                .findAny();
+
+        //only snap cards if they are actually bad
+        if (ownSnap.isPresent()) {
+            Information ownSnapChosen = ownSnap.get();
+            if (ownSnapChosen.card().getValue() >= 1) {
+                return Optional.of(new Pair<>(this, ownSnapChosen.index()));
+            }
+        }
+
+        //we cannot snap our own card, look for a snap in another player's hand or otherwise return empty
+        return this.knowledge.stream()
+                .filter(inf -> !inf.owner().equals(this))
+                .filter(inf -> inf.card().rank().equals(discardTop.rank()))
+                .findAny()
+                .map(inf -> new Pair<>(inf.owner(), inf.index()));
+    }
+
     private List<Card> getWeightedDeterminization(List<Card> unseen) {
         List<Card> simDeck = new ArrayList<>(unseen);
 

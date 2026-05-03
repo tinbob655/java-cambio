@@ -32,6 +32,10 @@ public final class Hand {
         this.cards.set(index, Optional.of(newCard));
     }
 
+    public void removeCardAt(int index) {
+        this.cards.set(index, Optional.empty());
+    }
+
     public Hand newHandWithSwapAt(int index, Card newCard) {
         Hand newHand = new Hand(new ArrayList<>(this.cards));
         newHand.setCardAt(index, newCard);
