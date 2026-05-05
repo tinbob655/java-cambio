@@ -295,30 +295,8 @@ public class Bot extends Player {
 
     private List<Card> getWeightedDeterminization(List<Card> unseen) {
         List<Card> simDeck = new ArrayList<>(unseen);
-
-        class WeightedCard {
-            final Card card;
-            final int weight;
-
-            WeightedCard(Card card) {
-                this.card = card;
-                this.weight = card.getValue() + (int) (Math.random() * 6 - 3);
-            }
-        }
-
-        List<WeightedCard> weightedList = new ArrayList<>();
-        for (Card c : simDeck) {
-            weightedList.add(new WeightedCard(c));
-        }
-
-        weightedList.sort(Comparator.comparingInt(wc -> wc.weight));
-
-        List<Card> result = new ArrayList<>();
-        for (WeightedCard wc : weightedList) {
-            result.add(wc.card);
-        }
-
-        return result;
+        Collections.shuffle(simDeck);
+        return simDeck;
     }
 
     private double simulatePlayout(Move mv, List<Card> simDeck, GameState state) {
@@ -349,7 +327,8 @@ public class Bot extends Player {
         double utilityScore = 0;
         if (mv.swap() && mv.swapIndex() >= 0 && mv.swapIndex() < 4) {
             mySimHand[mv.swapIndex()] = drawnCard;
-        } else {
+        }
+        else {
             Rank r = drawnCard.rank();
             switch (r) {
                 case SEVEN, EIGHT -> utilityScore += 2;
@@ -361,7 +340,9 @@ public class Bot extends Player {
                         if (theirBest != null) {
                             double valDiff = getExpectedValue(myWorst.getKey(), myWorst.getValue())
                                     - getExpectedValue(theirBest.getKey(), theirBest.getValue());
-                            if (valDiff > 0) utilityScore += valDiff;
+                            if (valDiff > 0) {
+                                utilityScore += Math.min(valDiff,15.0);
+                            }
                         }
                     }
                 }
